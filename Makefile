@@ -20,8 +20,8 @@ WLHEADERS  := $(addprefix $(WLPROTODIR)/,$(WLPROTOS:=-client-protocol.h))
 WLSOURCES  := $(addprefix $(WLPROTODIR)/,$(WLPROTOS:=-protocol.c))
 WLPROTOXML != pkg-config wayland-protocols --variable=pkgdatadir
 WLSCANNER  != pkg-config wayland-scanner --variable=wayland_scanner
-WLCFLAGS   != pkg-config wayland-client --cflags
-WLLDFLAGS  != pkg-config wayland-client --libs
+WLCFLAGS   != pkg-config vulkan wayland-client --cflags
+WLLDFLAGS  != pkg-config vulkan wayland-client --libs
 
 HEADERS += $(WLHEADERS)
 SOURCES += $(WLSOURCES)

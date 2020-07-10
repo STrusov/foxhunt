@@ -14,6 +14,8 @@
 
 #include "wayland_window.h"
 
+#include "vulkan.h"
+
 /**
  * Ключевой объект для связи с сервером.
  */
@@ -164,11 +166,12 @@ static struct wl_buffer *shm_buffer_create(struct window *window)
 static void on_xdg_surface_configure(void *p, struct xdg_surface *surface, uint32_t serial)
 {
 	struct window *window = p;
-	struct wl_buffer *buffer = shm_buffer_create(window);
-
 	xdg_surface_ack_configure(surface, serial);
+/** /
+	struct wl_buffer *buffer = shm_buffer_create(window);
 	wl_surface_attach(window->wl_surface, buffer, 0, 0);
 	wl_surface_commit(window->wl_surface);
+/**/
 }
 
 static const struct xdg_surface_listener xdg_surface_listener = {
@@ -178,11 +181,14 @@ static const struct xdg_surface_listener xdg_surface_listener = {
 void window_create(struct window *window)
 {
 	window->wl_surface = wl_compositor_create_surface(compositor);
+
 	window->xdg_surface = xdg_wm_base_get_xdg_surface(wm_base, window->wl_surface);
 	xdg_surface_add_listener(window->xdg_surface, &xdg_surface_listener, window);
 	window->toplevel = xdg_surface_get_toplevel(window->xdg_surface);
 	xdg_toplevel_set_title(window->toplevel, window->title);
 	wl_surface_commit(window->wl_surface);
+
+	vk_window_create(display, window->wl_surface, window->width, window->height);
 }
 
 void window_dispatch(void)
