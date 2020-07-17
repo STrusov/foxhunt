@@ -3,9 +3,14 @@ PREFIX  ?= /usr/local
 
 HEADERS := $(wildcard src/*.h)
 SOURCES := $(wildcard src/*.c)
+SHADERS := src/shader.frag src/shader.vert
 CFLAGS  := -std=c18 -Wall
 LDFLAGS :=
 CC ?= cc
+#GLCFLAGS :=
+GLC ?= glslangValidator -V
+#GLC ?= glslc
+BIN2TXT = hexdump -v -e '"\t" 4/1 "0x%02x, " "\n"'
 
 DEBUG ?= 0
 ifneq ($(DEBUG),0)
@@ -29,15 +34,24 @@ CFLAGS  += $(WLCFLAGS)
 LDFLAGS += $(WLLDFLAGS)
 OBJECTS := $(SOURCES:.c=.o)
 
+SPIRVS  := $(addsuffix .spv,$(SHADERS))
+SPVINLS := $(addsuffix .inl,$(SPIRVS))
+
 .PHONY: all clean install uninstall
 
 all: $(TARGET)
 
 $(TARGET): $(OBJECTS)
-	$(CC) -o $@ $(OBJECTS) $(LDFLAGS)
+	$(CC) -o $@ $(OBJECTS) $(SPVOBJS) $(LDFLAGS)
 
-$(OBJECTS): %.o: %.c $(HEADERS)
+$(OBJECTS): %.o: %.c $(HEADERS) $(SPVINLS)
 	$(CC) -c $< -o $@ -I$(WLPROTODIR) $(CFLAGS)
+
+$(SPVINLS): %.inl: %
+	$(BIN2TXT) $< > $@
+
+$(SPIRVS): %.spv: %
+	$(GLC) -c $< -o $@ $(GLCFLAGS)
 
 # Функция всего лишь удаляет суффикс -unstable-v с цифрой из имени файла.
 unvers = $(strip $(foreach v,1 2 3 4 5 6 7 8 9,\
@@ -54,7 +68,7 @@ $(WLPROTODIR):
 	mkdir $(WLPROTODIR)
 
 clean:
-	$(RM) $(TARGET) $(OBJECTS) -r $(WLPROTODIR)
+	$(RM) $(TARGET) $(OBJECTS) $(SPVINLS) $(SPIRVS) -r $(WLPROTODIR)
 
 install:
 	install $(TARGET) $(PREFIX)/bin

@@ -1,4 +1,5 @@
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -89,8 +90,28 @@ struct vk_context {
 	VkFormat        	format;
 	/** Количество кадров в последовательности.               */
 	uint32_t        	count;
-	/** Массив видов.                                         */
-	VkImageView     	*views;
+	/** Последовательность кадров.                            */
+	struct vk_frame 	*frame;
+
+	/** Представляет коллекцию привязок, шагов и зависимостей между ними. */
+	VkRenderPass    	render_pass;
+	/** Хранилище команд для графического процессора          */
+	VkCommandPool   	command_pool;
+
+	/** Графический конвейер                                  */
+	VkPipeline      	graphics_pipeline;
+	/** и описатель его топологии                             */
+	VkPipelineLayout	pipeline_layout;
+
+	/** Флажки синхронизации очередей.                        */
+	VkSemaphore     	semaphore[2];
+};
+
+/** Буфер кадра, проекция и команды построения изображения. */
+struct vk_frame {
+	VkFramebuffer   	fb;
+	VkImageView     	view;
+	VkCommandBuffer 	cmd;
 };
 
 /** Создаёт связанную с Воландом поверхность Вулкан. */
@@ -182,7 +203,6 @@ static VkResult create_device(struct vk_context *vk)
 		.enabledExtensionCount  	= sizeof device_extensions/sizeof*device_extensions,
 		.ppEnabledExtensionNames	= device_extensions,
 	};
-	vk->device = VK_NULL_HANDLE;
 	VkResult r = vkCreateDevice(vk->gpu, &devinfo, allocator, &vk->device);
 	if (r == VK_SUCCESS) {
 		for (int i = vk_first_queue; i < vk_num_queues; ++i)
@@ -192,7 +212,7 @@ static VkResult create_device(struct vk_context *vk)
 	return r;
 }
 
-/** Подготавливает массив буферов кадров для построения видеоряда. */
+/** Подготавливает описатель видеоряда. */
 static VkResult create_swapchain(struct vk_context *vk, uint32_t width, uint32_t height)
 {
 	VkSurfaceCapabilitiesKHR	surfcaps;
@@ -248,13 +268,248 @@ static VkResult create_swapchain(struct vk_context *vk, uint32_t width, uint32_t
 	r = vkCreateSwapchainKHR(vk->device, &swch, allocator, &vk->swapchain);
 	if (r == VK_SUCCESS) {
 		vkGetSwapchainImagesKHR(vk->device, vk->swapchain, &vk->count, NULL);
-		VkImage *images = calloc(vk->count, sizeof(*images));
-		vkGetSwapchainImagesKHR(vk->device, vk->swapchain, &vk->count, images);
-		printf(" Создан буфер видеоряда %ux%ux%u.\n",
+		printf(" Подготавливается формирователь видеоряда %ux%ux%u:\n",
 		        swch.imageExtent.width, swch.imageExtent.height, vk->count);
-		vk->views = calloc(vk->count, sizeof(*vk->views));
-		for(uint32_t i = 0; i != vk->count; ++i) {
-			VkImageViewCreateInfo	viewinfo = {
+	}
+	free(formats);
+	return r;
+}
+
+static VkResult create_render(struct vk_context *vk)
+{
+	const struct VkAttachmentDescription color_attachment = {
+		.format        	= vk->format,
+		.samples       	= VK_SAMPLE_COUNT_1_BIT,
+		.loadOp        	= VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp       	= VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp 	= VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp	= VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout 	= VK_IMAGE_LAYOUT_UNDEFINED,
+		.finalLayout   	= VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+	};
+	static const struct VkAttachmentReference color_attachment_ref = {
+		.attachment	= 0,
+		.layout    	= VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+	};
+	static const struct VkSubpassDescription subpass = {
+		.pipelineBindPoint      	= VK_PIPELINE_BIND_POINT_GRAPHICS,
+		.inputAttachmentCount   	= 0,
+		.pInputAttachments      	= NULL,
+		.colorAttachmentCount   	= 1,
+		.pColorAttachments      	= &color_attachment_ref,
+		.pResolveAttachments    	= NULL,
+		.pDepthStencilAttachment	= NULL,
+		.preserveAttachmentCount	= 0,
+		.pPreserveAttachments   	= NULL,
+	};
+	static const struct VkSubpassDependency dependency = {
+		.srcSubpass     	= VK_SUBPASS_EXTERNAL,
+		.dstSubpass     	= 0,
+		.srcStageMask   	= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.dstStageMask   	= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.srcAccessMask  	= 0,
+		.dstAccessMask  	= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+		.dependencyFlags	= 0,
+	};
+	const struct VkRenderPassCreateInfo render_pass_info = {
+		.sType          	= VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+		.attachmentCount	= 1,
+		.pAttachments   	= &color_attachment,
+		.subpassCount   	= 1,
+		.pSubpasses     	= &subpass,
+		.dependencyCount	= 1,
+		.pDependencies  	= &dependency,
+	};
+	VkResult r = vkCreateRenderPass(vk->device, &render_pass_info, allocator, &vk->render_pass);
+	if (r == VK_SUCCESS)
+		printf("  Создано описание визуализатора.\n");
+	return r;
+}
+
+static VkResult create_command_pool(struct vk_context *vk)
+{
+	const struct VkCommandPoolCreateInfo cmdpoolinfo = {
+		.sType           	= VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+		.queueFamilyIndex	= vk->qi[vk_graphics],
+	};
+	VkResult r = vkCreateCommandPool(vk->device, &cmdpoolinfo, allocator, &vk->command_pool);
+	if (r == VK_SUCCESS)
+		printf("  Создано хранилище команд графического процессора.\n");
+	return r;
+}
+
+_Alignas(uint32_t)
+static const uint8_t shader_vert_spv[] = {
+#include "shader.vert.spv.inl"
+};
+
+_Alignas(uint32_t)
+static const uint8_t shader_frag_spv[] = {
+#include "shader.frag.spv.inl"
+};
+
+static VkResult create_pipeline(struct vk_context *vk)
+{
+	static const char *shader_name[] = { "вершин", "фрагментов" };
+	static const struct VkShaderModuleCreateInfo shader_mods[] = {
+		{
+			.sType   	= VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+			.codeSize	= sizeof(shader_vert_spv),
+			.pCode   	= (const uint32_t*)shader_vert_spv,
+		},{
+			.sType   	= VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+			.codeSize	= sizeof(shader_frag_spv),
+			.pCode   	= (const uint32_t*)shader_frag_spv,
+		},
+	};
+	struct VkPipelineShaderStageCreateInfo shader_stages[] = {
+		{
+			.sType 	= VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+			.stage 	= VK_SHADER_STAGE_VERTEX_BIT,
+			.module	= VK_NULL_HANDLE,
+			.pName 	= "main",
+		},{
+			.sType 	= VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+			.stage 	= VK_SHADER_STAGE_FRAGMENT_BIT,
+			.module	= VK_NULL_HANDLE,
+			.pName 	= "main",
+		},
+	};
+	static_assert(sizeof(shader_mods)/sizeof(*shader_mods) == sizeof(shader_stages)/sizeof(*shader_stages));
+	VkResult r;
+	for (int i = 0; i < sizeof(shader_mods)/sizeof(*shader_mods); ++i) {
+		r = vkCreateShaderModule(vk->device, &shader_mods[i], allocator, &shader_stages[i].module);
+		if (r != VK_SUCCESS)
+			goto exit_with_cleanup;
+		printf("  Создан модуль ретушёра %s (%lu байт).\n", shader_name[i], shader_mods[i].codeSize);
+	}
+
+	static const struct VkPipelineVertexInputStateCreateInfo vertexinput_state = {
+		.sType                          	= VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+		.vertexBindingDescriptionCount  	= 0,
+		.pVertexBindingDescriptions     	= NULL,
+		.vertexAttributeDescriptionCount	= 0,
+		.pVertexAttributeDescriptions   	= NULL,
+	};
+	static const struct VkPipelineInputAssemblyStateCreateInfo inputassembly_state = {
+		.sType                 	= VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+		.topology              	= VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+		.primitiveRestartEnable	= VK_FALSE,
+	};
+
+	const struct VkViewport viewport = {
+		.x       	= 0.0,
+		.y       	= 0.0,
+		.width   	= vk->extent.width,
+		.height  	= vk->extent.height,
+		.minDepth	= 0.0,
+		.maxDepth	= 1.0,
+	};
+	const struct VkRect2D scissor = {
+		.offset	= { 0, 0 },
+		.extent	= vk->extent,
+	};
+	const struct VkPipelineViewportStateCreateInfo viewport_state = {
+		.sType        	= VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+		.viewportCount	= 1,
+		.pViewports   	= &viewport,
+		.scissorCount 	= 1,
+		.pScissors    	= &scissor,
+	};
+
+	static const struct VkPipelineRasterizationStateCreateInfo rasterization_state = {
+		.sType                  	= VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+		.depthClampEnable       	= VK_FALSE,
+		.rasterizerDiscardEnable	= VK_FALSE,
+		.polygonMode            	= VK_POLYGON_MODE_FILL,
+		.cullMode               	= VK_CULL_MODE_BACK_BIT,
+		.frontFace              	= VK_FRONT_FACE_CLOCKWISE,
+		.depthBiasEnable        	= VK_FALSE,
+		.depthBiasConstantFactor	= 0,
+		.depthBiasClamp         	= 0,
+		.depthBiasSlopeFactor   	= 0,
+		.lineWidth              	= 1.0,
+	};
+	static const struct VkPipelineMultisampleStateCreateInfo multisample_state = {
+		.sType                	= VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+		.rasterizationSamples 	= VK_SAMPLE_COUNT_1_BIT,
+		.sampleShadingEnable  	= VK_FALSE,
+		.minSampleShading     	= 0.0,
+		.pSampleMask          	= NULL,
+		.alphaToCoverageEnable	= VK_FALSE,
+		.alphaToOneEnable     	= VK_FALSE,
+	};
+	static const struct VkPipelineColorBlendAttachmentState cb_attach = {
+		.blendEnable        	= VK_FALSE,
+		.srcColorBlendFactor	= VK_BLEND_FACTOR_ZERO,
+		.dstColorBlendFactor	= VK_BLEND_FACTOR_ZERO,
+		.colorBlendOp       	= VK_BLEND_OP_ADD,
+		.srcAlphaBlendFactor	= VK_BLEND_FACTOR_ZERO,
+		.dstAlphaBlendFactor	= VK_BLEND_FACTOR_ZERO,
+		.alphaBlendOp       	= VK_BLEND_OP_ADD,
+		.colorWriteMask     	= VK_COLOR_COMPONENT_R_BIT
+		                    	| VK_COLOR_COMPONENT_G_BIT
+		                    	| VK_COLOR_COMPONENT_B_BIT
+		                    	| VK_COLOR_COMPONENT_A_BIT,
+	};
+	static const struct VkPipelineColorBlendStateCreateInfo colorblend_state = {
+		.sType          	= VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+		.logicOpEnable  	= VK_FALSE,
+		.logicOp        	= VK_LOGIC_OP_COPY,
+		.attachmentCount	= 1,
+		.pAttachments   	= &cb_attach,
+		.blendConstants 	= { 0.0, 0.0, 0.0, 0.0, },
+	};
+	static const struct VkPipelineLayoutCreateInfo pipelinelayoutinfo = {
+		.sType                 	= VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+		.setLayoutCount        	= 0,
+		.pSetLayouts           	= NULL,
+		.pushConstantRangeCount	= 0,
+		.pPushConstantRanges   	= NULL,
+	};
+	r = vkCreatePipelineLayout(vk->device, &pipelinelayoutinfo, allocator, &vk->pipeline_layout);
+	if (r == VK_SUCCESS) {
+		printf("  Создана топология конвейера.\n");
+		const struct VkGraphicsPipelineCreateInfo pipelineinfo = {
+			.sType              	= VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+			.stageCount         	= sizeof(shader_stages)/sizeof(*shader_stages),
+			.pStages            	= shader_stages,
+			.pVertexInputState  	= &vertexinput_state,
+			.pInputAssemblyState	= &inputassembly_state,
+			.pTessellationState 	= NULL,
+			.pViewportState     	= &viewport_state,
+			.pRasterizationState	= &rasterization_state,
+			.pMultisampleState  	= &multisample_state,
+			.pDepthStencilState 	= NULL,
+			.pColorBlendState   	= &colorblend_state,
+			.pDynamicState      	= NULL,
+			.layout             	= vk->pipeline_layout,
+			.renderPass         	= vk->render_pass,
+			.subpass            	= 0,
+			.basePipelineHandle 	= VK_NULL_HANDLE,
+			.basePipelineIndex  	= 0,
+		};
+		r = vkCreateGraphicsPipelines(vk->device, VK_NULL_HANDLE, 1, &pipelineinfo,
+		                              allocator, &vk->graphics_pipeline);
+		if (r == VK_SUCCESS)
+			printf("  Создан конвейер.\n");
+	}
+exit_with_cleanup:
+	for (int i = sizeof(shader_mods)/sizeof(*shader_mods)-1; i >= 0; --i)
+		vkDestroyShaderModule(vk->device, shader_stages[i].module, allocator);
+	return r;
+}
+
+/** Создаёт массив буферов кадров и команд для построения видеоряда. */
+static VkResult create_imagery(struct vk_context *vk)
+{
+	VkImage *images = calloc(vk->count, sizeof(*images));
+	vkGetSwapchainImagesKHR(vk->device, vk->swapchain, &vk->count, images);
+	vk->frame = calloc(vk->count, sizeof(*vk->frame));
+	VkResult r = VK_ERROR_OUT_OF_HOST_MEMORY;
+	if (vk->frame)
+		for (uint32_t i = 0; i != vk->count; ++i) {
+			const struct VkImageViewCreateInfo viewinfo = {
 				.sType          	= VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
 				.image          	= images[i],
 				.viewType       	= VK_IMAGE_VIEW_TYPE_2D,
@@ -273,44 +528,143 @@ static VkResult create_swapchain(struct vk_context *vk, uint32_t width, uint32_t
 					.layerCount  	= 1,
 				},
 			};
-			r = vkCreateImageView(vk->device, &viewinfo, allocator, &vk->views[i]);
-			if (r == VK_SUCCESS)
-				printf("   Проекция кадра №%u.\n", i);
-			else
+			r = vkCreateImageView(vk->device, &viewinfo, allocator, &vk->frame[i].view);
+			if (r != VK_SUCCESS)
 				break;
+			printf("   Создана проекция кадра №%u.\n", i);
+
+			const struct VkFramebufferCreateInfo fbinfo = {
+				.sType          	= VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+				.renderPass     	= vk->render_pass,
+				.attachmentCount	= 1,
+				.pAttachments   	= &vk->frame[i].view,
+				.width          	= vk->extent.width,
+				.height         	= vk->extent.height,
+				.layers         	= 1,
+			};
+			r = vkCreateFramebuffer(vk->device, &fbinfo, allocator, &vk->frame[i].fb);
+			if (r != VK_SUCCESS)
+				break;
+			printf("   Создан буфер кадра №%u.\n", i);
+
+			const struct VkCommandBufferAllocateInfo allocinfo = {
+				.sType             	= VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+				.commandPool       	= vk->command_pool,
+				.level             	= VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+				.commandBufferCount	= 1,
+			};
+			r = vkAllocateCommandBuffers(vk->device, &allocinfo, &vk->frame[i].cmd);
+			if (r != VK_SUCCESS)
+				break;
+			printf("   Создан буфер команд №%u.\n", i);
+
+			static const struct VkCommandBufferBeginInfo buf_begin = {
+				.sType           	= VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+				.pInheritanceInfo	= NULL,
+			};
+			r = vkBeginCommandBuffer(vk->frame[i].cmd, &buf_begin);
+			if (r != VK_SUCCESS)
+				break;
+			static const union VkClearValue cc = {
+				.color.float32	= { 0.0, 0.0, 0.0, 1.0 },
+			};
+			const struct VkRenderPassBeginInfo rpinfo = {
+				.sType          	= VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+				.renderPass     	= vk->render_pass,
+				.framebuffer    	= vk->frame[i].fb,
+				.renderArea     	= {
+					.offset	= { 0, 0 },
+					.extent	= vk->extent,
+				},
+				.clearValueCount	= 1,
+				.pClearValues   	= &cc,
+			};
+			vkCmdBeginRenderPass(vk->frame[i].cmd, &rpinfo, VK_SUBPASS_CONTENTS_INLINE);
+			vkCmdBindPipeline(vk->frame[i].cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk->graphics_pipeline);
+			vkCmdDraw(vk->frame[i].cmd, 3, 1, 0, 0);
+			r = vkEndCommandBuffer(vk->frame[i].cmd);
+			if (r != VK_SUCCESS)
+				break;
+			printf("   Заполнен буфер команд №%u.\n", i);
 		}
-		free(images);
-	}
-	free(formats);
+	free(images);
 	return r;
 }
 
-/** Формирует кадр. */
-void vk_draw_frame(struct vk_context *vk)
-{
-	uint32_t image_index;
-	vkAcquireNextImageKHR(vk->device, vk->swapchain, UINT64_MAX, VK_NULL_HANDLE, VK_NULL_HANDLE, &image_index);
+VkResult create_sync_objects(struct vk_context *vk) {
+	static const struct VkSemaphoreCreateInfo sc = {
+		.sType	= VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+	};
+	const int n_sem = sizeof(vk->semaphore)/sizeof(*vk->semaphore);
+	for (int i = 0; i < n_sem; ++i) {
+		VkResult r = vkCreateSemaphore(vk->device, &sc, allocator, &vk->semaphore[i]);
+		if (r != VK_SUCCESS)
+			return r;
+	}
+	printf("  Созданы объекты синхронизации (%i).\n", n_sem);
+	return VK_SUCCESS;
+}
 
-	VkSwapchainKHR swapchains[] = { vk->swapchain };
-	const struct VkPresentInfoKHR prinfo = {
+
+/** Формирует кадр. */
+VkResult vk_draw_frame(struct vk_context *vk)
+{
+	// Таймаут UINT64_MAX (бесконечное ожидание) допустим когда количество уже
+	// захваченных кадров не превышает разность между размером ряда и
+	// minImageCount, возвращённой vkGetPhysicalDeviceSurfaceCapabilities2KHR().
+	uint32_t image_index;
+	VkResult r = vkAcquireNextImageKHR(vk->device, vk->swapchain, 0, vk->semaphore[0],
+	                                   VK_NULL_HANDLE, &image_index);
+	static const VkPipelineStageFlags wait_stages[] = {
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+	};
+	const struct VkSubmitInfo gfxcmd = {
+		.sType               	= VK_STRUCTURE_TYPE_SUBMIT_INFO,
+		.waitSemaphoreCount  	= 1,
+		.pWaitSemaphores     	= &vk->semaphore[0],
+		.pWaitDstStageMask   	= wait_stages,
+		.commandBufferCount  	= 1,
+		.pCommandBuffers     	= &vk->frame[image_index].cmd,
+		.signalSemaphoreCount	= 1,
+		.pSignalSemaphores   	= &vk->semaphore[1],
+	};
+	r = vkQueueSubmit(vk->queue[vk_graphics], 1, &gfxcmd, VK_NULL_HANDLE);
+
+	const struct VkPresentInfoKHR present = {
 		.sType             	= VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
 		.waitSemaphoreCount	= 0,
-		.pWaitSemaphores   	= NULL,
+		.pWaitSemaphores   	= &vk->semaphore[1],
 		.swapchainCount    	= 1,
-		.pSwapchains       	= swapchains,
+		.pSwapchains       	= &vk->swapchain,
 		.pImageIndices     	= &image_index,
 		.pResults          	= NULL,
 	};
-	vkQueuePresentKHR(vk->queue[vk_presentation], &prinfo);
+	r = vkQueuePresentKHR(vk->queue[vk_presentation], &present);
+	if (r < VK_SUCCESS) {
+		abort();
+	}
+	return r;
 }
 
 /** Удаляет оконную поверхность и связанные структуры. */
 void vk_window_destroy(struct vk_context *vk)
 {
-	while (vk->count--)
-		vkDestroyImageView(vk->device, vk->views[vk->count], allocator);
-	free(vk->views);
+	vkDeviceWaitIdle(vk->device);
+	for (int i = 0; i < sizeof(vk->semaphore)/sizeof(*vk->semaphore); ++i)
+		vkDestroySemaphore(vk->device, vk->semaphore[i], allocator);
+	do {
+		vkFreeCommandBuffers(vk->device, vk->command_pool, 1, &vk->frame[vk->count].cmd);
+		vkDestroyFramebuffer(vk->device, vk->frame[vk->count].fb, allocator);
+		vkDestroyImageView(vk->device, vk->frame[vk->count].view, allocator);
+	} while (vk->count--);
+	free(vk->frame);
+
+	vkDestroyCommandPool(vk->device, vk->command_pool, allocator);
+	vkDestroyPipeline(vk->device, vk->graphics_pipeline, allocator);
+	vkDestroyPipelineLayout(vk->device, vk->pipeline_layout, allocator);
+	vkDestroyRenderPass(vk->device, vk->render_pass, allocator);
 	vkDestroySwapchainKHR(vk->device, vk->swapchain, allocator);
+
 	vkDestroyDevice(vk->device, allocator);
 	vkDestroySurfaceKHR(instance, vk->surface, allocator);
 	free(vk);
@@ -324,7 +678,13 @@ vk_window_create(struct wl_display *display, struct wl_surface *surface,
 	while (create_surface(vk, display, surface) == VK_SUCCESS) {
 		select_gpu(vk);
 		create_device(vk);
+
 		create_swapchain(vk, width, height);
+		create_render(vk);
+		create_pipeline(vk);
+		create_command_pool(vk);
+		create_imagery(vk);
+		create_sync_objects(vk);
 
 		vk_draw_frame(vk);
 		return vk;
