@@ -19,6 +19,18 @@
 #include "vulkan.h"
 #include "wayland_window.h"
 
+static bool draw_frame(void *p)
+{
+	struct vk_context *vk = p;
+	VkResult r = vk_draw_frame(vk);
+	return (r == VK_SUCCESS);
+}
+
+static const struct render vulkan = {
+	.create    	= vk_window_create,
+	.draw_frame	= draw_frame,
+};
+
 int main(int argc, char *argv[])
 {
 	if (!wayland_init())
@@ -28,6 +40,7 @@ int main(int argc, char *argv[])
 		return 2;
 
 	struct window window = {
+		.render	= &vulkan,
 		.title	= "Окно",
 		.width	= 640,
 		.height	= 480,

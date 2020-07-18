@@ -9,6 +9,11 @@ void vk_stop(void);
 
 struct vk_context;
 
-struct vk_context* vk_window_create(struct wl_display *, struct wl_surface *, uint32_t width, uint32_t height);
+/** Создаёт оконную поверхность и связанные структуры. */
+void vk_window_create(struct wl_display *, struct wl_surface *,
+                      uint32_t width, uint32_t height, void **object);
+
 void vk_window_destroy(struct vk_context*);
 
+/** Формирует кадр. */
+VkResult vk_draw_frame(struct vk_context*);

@@ -1,6 +1,7 @@
 
 #define _GNU_SOURCE
 
+#include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,8 +14,6 @@
 #include "xdg-shell-client-protocol.h"
 
 #include "wayland_window.h"
-
-#include "vulkan.h"
 
 /**
  * Ключевой объект для связи с сервером.
@@ -178,6 +177,27 @@ static const struct xdg_surface_listener xdg_surface_listener = {
 	.configure = &on_xdg_surface_configure,
 };
 
+const static struct wl_callback_listener frame_listener;
+
+/** Вызывается композитором, когда пришло время отрисовать окно. */
+static void draw_frame(void *p, struct wl_callback *cb, uint32_t time)
+{
+	wl_callback_destroy(cb);
+
+	struct window *w = p;
+	assert(w->render->draw_frame);
+	w->render->draw_frame(w->render_ctx);
+
+	// TODO Vulkan неявно вызывает нижеследующее в vkQueuePresentKHR();
+	wl_callback_add_listener(wl_surface_frame(w->wl_surface), &frame_listener, w);
+	wl_surface_commit(w->wl_surface);
+}
+
+static const struct wl_callback_listener frame_listener = {
+	.done = draw_frame,
+};
+
+
 void window_create(struct window *window)
 {
 	window->wl_surface = wl_compositor_create_surface(compositor);
@@ -186,9 +206,15 @@ void window_create(struct window *window)
 	xdg_surface_add_listener(window->xdg_surface, &xdg_surface_listener, window);
 	window->toplevel = xdg_surface_get_toplevel(window->xdg_surface);
 	xdg_toplevel_set_title(window->toplevel, window->title);
-	wl_surface_commit(window->wl_surface);
 
-	vk_window_create(display, window->wl_surface, window->width, window->height);
+	assert(window->render);
+	assert(window->render->create);
+	window->render->create(display, window->wl_surface, window->width,
+	                       window->height, &window->render_ctx);
+	if (window->render_ctx)
+		wl_callback_add_listener(wl_surface_frame(window->wl_surface), &frame_listener, window);
+
+	wl_surface_commit(window->wl_surface);
 }
 
 void window_dispatch(void)

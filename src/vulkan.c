@@ -606,7 +606,6 @@ VkResult create_sync_objects(struct vk_context *vk) {
 }
 
 
-/** Формирует кадр. */
 VkResult vk_draw_frame(struct vk_context *vk)
 {
 	// Таймаут UINT64_MAX (бесконечное ожидание) допустим когда количество уже
@@ -670,11 +669,13 @@ void vk_window_destroy(struct vk_context *vk)
 	free(vk);
 }
 
-struct vk_context*
-vk_window_create(struct wl_display *display, struct wl_surface *surface,
-                 uint32_t width, uint32_t height)
+void vk_window_create(struct wl_display *display, struct wl_surface *surface,
+                      uint32_t width, uint32_t height, void **vk_context)
 {
 	struct vk_context *vk = calloc(1, sizeof(*vk));
+	*vk_context = vk;
+	if (!vk)
+		return;
 	while (create_surface(vk, display, surface) == VK_SUCCESS) {
 		select_gpu(vk);
 		create_device(vk);
@@ -686,10 +687,8 @@ vk_window_create(struct wl_display *display, struct wl_surface *surface,
 		create_imagery(vk);
 		create_sync_objects(vk);
 
-		vk_draw_frame(vk);
-		return vk;
+		return;
 	}
 	vk_window_destroy(vk);
-	return NULL;
 }
 
