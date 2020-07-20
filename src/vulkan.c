@@ -654,7 +654,7 @@ VkResult vk_draw_frame(struct vk_context *vk)
 
 	const struct VkPresentInfoKHR present = {
 		.sType             	= VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-		.waitSemaphoreCount	= 0,
+		.waitSemaphoreCount	= 1,
 		.pWaitSemaphores   	= &vk->semaphore[1],
 		.swapchainCount    	= 1,
 		.pSwapchains       	= &vk->swapchain,
