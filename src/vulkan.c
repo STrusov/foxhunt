@@ -68,6 +68,8 @@ void vk_stop(void)
  * Для упрощения инициализации VkSwapchainCreateInfoKHR (\see create_swapchain)
  * и единообразия получения описателей с помощью vkGetDeviceQueue (\see create_device),
  * описатели и индексы семейств очередей хранятся в параллельных массивах.
+ * При добавлении новых типов очередей важен порядок, для исключения
+ * дубликатов при вызове vkCreateDevice (\see create_device).
  */
 enum {
 	/** ...обработки графики. */
@@ -144,7 +146,8 @@ static VkResult select_gpu(struct vk_context *vk)
 {
 	// Валидные индексы начинаются с 0 и граничных значений быть не должно.
 	const uint32_t inv = (uint32_t)-1;
-	vk->qi[vk_graphics] = vk->qi[vk_presentation] = inv;
+	for (int i = vk_first_queue; i < vk_num_queues; ++i)
+		vk->qi[i] = inv;
 	uint32_t num_dev = 0;
 	VkResult r = vkEnumeratePhysicalDevices(instance, &num_dev, NULL);
 	printf(" Доступно графических процессоров с поддержкой Vulkan: %u.\n", num_dev);
@@ -192,22 +195,26 @@ static VkResult select_gpu(struct vk_context *vk)
 static VkResult create_device(struct vk_context *vk)
 {
 	const float priority = 1.0f;
-	const VkDeviceQueueCreateInfo queues[] = {
-		{
-			.sType           	= VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-			.queueFamilyIndex	= vk->qi[vk_graphics],
-			.queueCount      	= 1,
-			.pQueuePriorities	= &priority,
-		}, {
-			.sType           	= VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-			.queueFamilyIndex	= vk->qi[vk_presentation],
-			.queueCount      	= 1,
-			.pQueuePriorities	= &priority,
-		},
-	};
-	const VkDeviceCreateInfo devinfo = {
+	// Спецификация Вулкан требует:
+	// каждый элемент массива описаний очередей должен быть уникален.
+	// https://www.khronos.org/registry/vulkan/specs/1.0-extensions/html/vkspec.html#VUID-VkDeviceCreateInfo-queueFamilyIndex-00372
+	uint32_t num_queues = 0;
+	struct VkDeviceQueueCreateInfo queues[vk_num_queues] = {};
+	for (int i = vk_first_queue; i < vk_num_queues; ++i) {
+		for (int j = 0; j < i; ++j)
+			if (queues[j].queueFamilyIndex == vk->qi[i])
+				goto next_queue;
+		queues[num_queues].sType           	= VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+		queues[num_queues].queueFamilyIndex = vk->qi[i];
+		queues[num_queues].queueCount      	= 1;
+		queues[num_queues].pQueuePriorities	= &priority;
+		++num_queues;
+next_queue:
+		continue;
+	}
+	const struct VkDeviceCreateInfo devinfo = {
 		.sType                  	= VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-		.queueCreateInfoCount   	= sizeof queues/sizeof*queues,
+		.queueCreateInfoCount   	= num_queues,
 		.pQueueCreateInfos      	= queues,
 		.enabledLayerCount      	= 0,
 		.ppEnabledLayerNames    	= NULL,
