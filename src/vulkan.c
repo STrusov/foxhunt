@@ -6,6 +6,12 @@
 
 #include "vulkan.h"
 
+#ifdef ENABLE_VK_VALIDATION
+static const char *validation_layers[] = {
+	"VK_LAYER_KHRONOS_validation",
+};
+#endif
+
 static const char *instance_extensions[] = {
 	VK_KHR_SURFACE_EXTENSION_NAME,
 	VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME,
@@ -27,8 +33,13 @@ static const struct VkApplicationInfo appinfo = {
 static const struct VkInstanceCreateInfo instinfo = {
 	.sType                  	= VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
 	.pApplicationInfo       	= &appinfo,
+#ifdef ENABLE_VK_VALIDATION
+	.enabledLayerCount      	= sizeof validation_layers/sizeof*validation_layers,
+	.ppEnabledLayerNames    	= validation_layers,
+#else
 	.enabledLayerCount      	= 0,
 	.ppEnabledLayerNames    	= NULL,
+#endif
 	.enabledExtensionCount  	= sizeof instance_extensions/sizeof*instance_extensions,
 	.ppEnabledExtensionNames	= instance_extensions,
 };

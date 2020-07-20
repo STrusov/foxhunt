@@ -4,6 +4,14 @@
 #define VK_USE_PLATFORM_WAYLAND_KHR
 #include <vulkan/vulkan.h>
 
+#ifndef ENABLE_VK_VALIDATION
+  #ifndef NDEBUG
+    #define ENABLE_VK_VALIDATION 1
+  #endif
+#elif !ENABLE_VK_VALIDATION
+  #undef ENABLE_VK_VALIDATION
+#endif
+
 VkResult vk_init(void);
 void vk_stop(void);
 
