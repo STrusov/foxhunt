@@ -598,8 +598,13 @@ static VkResult create_imagery(struct vk_context *vk)
 				.pClearValues   	= &cc,
 			};
 			vkCmdBeginRenderPass(vk->frame[i].cmd, &rpinfo, VK_SUBPASS_CONTENTS_INLINE);
-			vkCmdBindPipeline(vk->frame[i].cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk->graphics_pipeline);
-			vkCmdDraw(vk->frame[i].cmd, 3, 1, 0, 0);
+				vkCmdBindPipeline(vk->frame[i].cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk->graphics_pipeline);
+				vkCmdDraw(vk->frame[i].cmd, 3, 1, 0, 0);
+			vkCmdEndRenderPass(vk->frame[i].cmd);
+			// Спецификация Вулкан требует:
+			// Если буфер команд является основным, не должно быть
+			// активных инстанций RenderPass.
+			// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#VUID-vkEndCommandBuffer-commandBuffer-00060
 			r = vkEndCommandBuffer(vk->frame[i].cmd);
 			if (r != VK_SUCCESS)
 				break;
