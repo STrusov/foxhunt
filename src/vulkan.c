@@ -125,6 +125,7 @@ struct vk_frame {
 	VkFramebuffer   	fb;
 	VkImageView     	view;
 	VkCommandBuffer 	cmd;
+	VkFence         	pending;	///< готовность буфера команд.
 };
 
 /** Создаёт связанную с Воландом поверхность Вулкан. */
@@ -609,6 +610,15 @@ static VkResult create_imagery(struct vk_context *vk)
 			if (r != VK_SUCCESS)
 				break;
 			printf("   Заполнен буфер команд №%u.\n", i);
+
+			static const struct VkFenceCreateInfo signaled_fence = {
+				.sType	= VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+				.flags	= VK_FENCE_CREATE_SIGNALED_BIT,
+			};
+			r = vkCreateFence(vk->device, &signaled_fence, allocator, &vk->frame[i].pending);
+			if (r != VK_SUCCESS)
+				break;
+			printf("   Создан барьер буфера команд №%u.\n", i);
 		}
 	free(images);
 	return r;
@@ -640,6 +650,18 @@ VkResult vk_draw_frame(struct vk_context *vk)
 	static const VkPipelineStageFlags wait_stages[] = {
 		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
 	};
+	// TODO
+	// Без синхронизации по vkQueueWaitIdle() или параметру fence vkQueueSubmit()
+	// валидатор рапортует, что буфер команд занят. https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#VUID-vkQueueSubmit-pCommandBuffers-00071
+	// Всего в конфигурации 4 кадра в очереди, vkAcquireNextImageKHR()
+	// захватывает попеременно первые 2, синхронно с кадровой развёрткой.
+	// Т.о. буфер якобы занят на протяжении 2-х кадров.
+	// При этом замечаний по семафорам, намеренно общим для всех кадров, нет; и
+	// semaphore[1] сигналится по завершению исполнения команд буфера,
+	// то есть _одновременно_ с fence.
+	// Достаточно вызвать vkWaitForFences с тайм-аутом 0.
+	r = vkWaitForFences(vk->device, 1, &vk->frame[image_index].pending, VK_TRUE, 0);
+	r = vkResetFences(vk->device, 1, &vk->frame[image_index].pending);
 	const struct VkSubmitInfo gfxcmd = {
 		.sType               	= VK_STRUCTURE_TYPE_SUBMIT_INFO,
 		.waitSemaphoreCount  	= 1,
@@ -650,8 +672,7 @@ VkResult vk_draw_frame(struct vk_context *vk)
 		.signalSemaphoreCount	= 1,
 		.pSignalSemaphores   	= &vk->semaphore[1],
 	};
-	r = vkQueueSubmit(vk->queue[vk_graphics], 1, &gfxcmd, VK_NULL_HANDLE);
-
+	r = vkQueueSubmit(vk->queue[vk_graphics], 1, &gfxcmd, vk->frame[image_index].pending);
 	const struct VkPresentInfoKHR present = {
 		.sType             	= VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
 		.waitSemaphoreCount	= 1,
@@ -675,6 +696,7 @@ void vk_window_destroy(struct vk_context *vk)
 	for (int i = 0; i < sizeof(vk->semaphore)/sizeof(*vk->semaphore); ++i)
 		vkDestroySemaphore(vk->device, vk->semaphore[i], allocator);
 	do {
+		vkDestroyFence(vk->device,  vk->frame[vk->count].pending, allocator);
 		vkFreeCommandBuffers(vk->device, vk->command_pool, 1, &vk->frame[vk->count].cmd);
 		vkDestroyFramebuffer(vk->device, vk->frame[vk->count].fb, allocator);
 		vkDestroyImageView(vk->device, vk->frame[vk->count].view, allocator);
