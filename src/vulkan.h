@@ -25,3 +25,20 @@ void vk_window_destroy(struct vk_context*);
 
 /** Формирует кадр. */
 VkResult vk_draw_frame(struct vk_context*);
+
+
+struct pos2d {
+	float	x;
+	float	y;
+};
+
+struct color {
+	float	r;
+	float	g;
+	float	b;
+};
+
+struct vertex2d {
+	struct pos2d	pos;
+	struct color	color;
+};

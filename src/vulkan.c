@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "vulkan.h"
 
@@ -110,6 +111,11 @@ struct vk_context {
 	VkRenderPass    	render_pass;
 	/** Хранилище команд для графического процессора          */
 	VkCommandPool   	command_pool;
+
+	/** Буфер вершин                                          */
+	VkBuffer        	vertex_buffer;
+	/** и ассоциированная память.                             */
+	VkDeviceMemory  	vertex_memory;
 
 	/** Графический конвейер                                  */
 	VkPipeline      	graphics_pipeline;
@@ -403,12 +409,30 @@ static VkResult create_pipeline(struct vk_context *vk)
 		printf("  Создан модуль ретушёра %s (%lu байт).\n", shader_name[i], shader_mods[i].codeSize);
 	}
 
+	static const struct VkVertexInputBindingDescription vertex_binding = {
+		.binding  	= 0,
+		.stride   	= sizeof(struct vertex2d),
+		.inputRate	= VK_VERTEX_INPUT_RATE_VERTEX,
+	};
+	static const struct VkVertexInputAttributeDescription vertex_attributes[] = {
+		{
+			.location	= 0,
+			.binding 	= 0,
+			.format  	= VK_FORMAT_R32G32_SFLOAT,
+			.offset  	= offsetof(struct vertex2d, pos),
+		}, {
+			.location	= 1,
+			.binding 	= 0,
+			.format  	= VK_FORMAT_R32G32B32_SFLOAT,
+			.offset  	= offsetof(struct vertex2d, color),
+		},
+	};
 	static const struct VkPipelineVertexInputStateCreateInfo vertexinput_state = {
 		.sType                          	= VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-		.vertexBindingDescriptionCount  	= 0,
-		.pVertexBindingDescriptions     	= NULL,
-		.vertexAttributeDescriptionCount	= 0,
-		.pVertexAttributeDescriptions   	= NULL,
+		.vertexBindingDescriptionCount  	= 1,
+		.pVertexBindingDescriptions     	= &vertex_binding,
+		.vertexAttributeDescriptionCount	= 2,
+		.pVertexAttributeDescriptions   	= vertex_attributes,
 	};
 	static const struct VkPipelineInputAssemblyStateCreateInfo inputassembly_state = {
 		.sType                 	= VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
@@ -519,6 +543,67 @@ exit_with_cleanup:
 	return r;
 }
 
+
+static
+VkResult create_buffer(struct vk_context *vk, VkDeviceSize size,
+                       VkBufferUsageFlags usage, VkMemoryPropertyFlags flags,
+                       VkBuffer *buffer, VkDeviceMemory *mem)
+{
+	const struct VkBufferCreateInfo buf_info = {
+		.sType                	= VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+		.size                 	= size,
+		.usage                	= usage,
+		.sharingMode          	= VK_SHARING_MODE_EXCLUSIVE,
+		.queueFamilyIndexCount	= 0,
+		.pQueueFamilyIndices  	= NULL,
+	};
+	VkResult r = vkCreateBuffer(vk->device, &buf_info, allocator, buffer);
+	if (r == VK_SUCCESS) {
+		printf("  Создаётся буфер:");
+		struct VkMemoryRequirements req;
+		vkGetBufferMemoryRequirements(vk->device, *buffer, &req);
+		struct VkPhysicalDeviceMemoryProperties props;
+		vkGetPhysicalDeviceMemoryProperties(vk->gpu, &props);
+		for ( uint32_t i = 0; i < props.memoryTypeCount; ++i)
+			if (req.memoryTypeBits & (1 << i) && flags == (props.memoryTypes[i].propertyFlags & flags)) {
+				const struct VkMemoryAllocateInfo alloc_info = {
+					.sType          	= VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+					.allocationSize 	= req.size,
+					.memoryTypeIndex	= i,
+				};
+				r = vkAllocateMemory(vk->device, &alloc_info, allocator, mem);
+				if (r == VK_SUCCESS) {
+					printf(" память распределена");
+					r = vkBindBufferMemory(vk->device, *buffer, *mem, 0);
+					if (r == VK_SUCCESS)
+						printf(" и привязана.");
+				}
+			}
+		printf("\n");
+	}
+	return r;
+}
+
+/** Создаёт буфер вершин и распределяет под него память. */
+static
+VkResult create_vertex_buffer(struct vk_context *vk, const void *vertices, VkDeviceSize size)
+{
+	VkResult r = create_buffer(vk, size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+	                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+	                           &vk->vertex_buffer, &vk->vertex_memory);
+	if (r == VK_SUCCESS) {
+		printf("  Создан буфер вершин.\n");
+		void *p;
+		r = vkMapMemory(vk->device, vk->vertex_memory, 0, size, 0, &p);
+		if (r == VK_SUCCESS) {
+			printf("  Заполнен буфер вершин.\n");
+			memcpy(p, vertices, size);
+		}
+		vkUnmapMemory(vk->device, vk->vertex_memory);
+	}
+	return r;
+}
+
 /** Создаёт массив буферов кадров и команд для построения видеоряда. */
 static VkResult create_imagery(struct vk_context *vk)
 {
@@ -600,6 +685,7 @@ static VkResult create_imagery(struct vk_context *vk)
 			};
 			vkCmdBeginRenderPass(vk->frame[i].cmd, &rpinfo, VK_SUBPASS_CONTENTS_INLINE);
 				vkCmdBindPipeline(vk->frame[i].cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk->graphics_pipeline);
+				vkCmdBindVertexBuffers(vk->frame[i].cmd, 0, 1, &vk->vertex_buffer, &(VkDeviceSize){0});
 				vkCmdDraw(vk->frame[i].cmd, 3, 1, 0, 0);
 			vkCmdEndRenderPass(vk->frame[i].cmd);
 			// Спецификация Вулкан требует:
@@ -703,6 +789,8 @@ void vk_window_destroy(struct vk_context *vk)
 	} while (vk->count--);
 	free(vk->frame);
 
+	vkFreeMemory(vk->device, vk->vertex_memory, allocator);
+	vkDestroyBuffer(vk->device, vk->vertex_buffer, allocator);
 	vkDestroyCommandPool(vk->device, vk->command_pool, allocator);
 	vkDestroyPipeline(vk->device, vk->graphics_pipeline, allocator);
 	vkDestroyPipelineLayout(vk->device, vk->pipeline_layout, allocator);
@@ -713,6 +801,13 @@ void vk_window_destroy(struct vk_context *vk)
 	vkDestroySurfaceKHR(instance, vk->surface, allocator);
 	free(vk);
 }
+
+
+static const struct vertex2d vertices[] = {
+	{ {+0.0f, -0.5f},	{1.0f, 0.0f, 0.0f} },
+	{ {+0.5f, +0.5f},	{0.0f, 1.0f, 0.0f} },
+	{ {-0.5f, +0.5f},	{0.0f, 0.0f, 1.0f} },
+};
 
 void vk_window_create(struct wl_display *display, struct wl_surface *surface,
                       uint32_t width, uint32_t height, void **vk_context)
@@ -729,6 +824,7 @@ void vk_window_create(struct wl_display *display, struct wl_surface *surface,
 		create_render(vk);
 		create_pipeline(vk);
 		create_command_pool(vk);
+		create_vertex_buffer(vk, vertices, sizeof(vertices));
 		create_imagery(vk);
 		create_sync_objects(vk);
 
