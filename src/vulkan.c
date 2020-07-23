@@ -128,6 +128,7 @@ struct vk_context {
 
 /** Буфер кадра, проекция и команды построения изображения. */
 struct vk_frame {
+	VkImage         	img;
 	VkFramebuffer   	fb;
 	VkImageView     	view;
 	VkCommandBuffer 	cmd;
@@ -254,6 +255,8 @@ static VkResult create_swapchain(struct vk_context *vk, uint32_t width, uint32_t
 		return r;
 	// Как минимум один формат обязательно поддержан.
 	VkSurfaceFormatKHR *formats = calloc(n_formats, sizeof(*formats));
+	if (!formats)
+		return VK_ERROR_OUT_OF_HOST_MEMORY;
 	vkGetPhysicalDeviceSurfaceFormatsKHR(vk->gpu, vk->surface, &n_formats, formats);
 	for (uint32_t i = 0; i < n_formats; ++i) {
 		if (formats[i].format == VK_FORMAT_B8G8R8A8_SRGB &&
@@ -295,6 +298,15 @@ static VkResult create_swapchain(struct vk_context *vk, uint32_t width, uint32_t
 		vkGetSwapchainImagesKHR(vk->device, vk->swapchain, &vk->count, NULL);
 		printf(" Подготавливается формирователь видеоряда %ux%ux%u:\n",
 		        swch.imageExtent.width, swch.imageExtent.height, vk->count);
+		VkImage *images = calloc(vk->count, sizeof(*images));
+		vkGetSwapchainImagesKHR(vk->device, vk->swapchain, &vk->count, images);
+		vk->frame = calloc(vk->count, sizeof(*vk->frame));
+		if (!images || !vk->frame)
+			r = VK_ERROR_OUT_OF_HOST_MEMORY;
+		else
+			for (int i = 0; i < vk->count; ++i)
+				vk->frame[i].img = images[i];
+		free(images);
 	}
 	free(formats);
 	return r;
@@ -604,18 +616,15 @@ VkResult create_vertex_buffer(struct vk_context *vk, const void *vertices, VkDev
 	return r;
 }
 
-/** Создаёт массив буферов кадров и команд для построения видеоряда. */
-static VkResult create_imagery(struct vk_context *vk)
+/** Создаёт буфер кадра и команд для его построения. */
+static VkResult create_frame_processor(struct vk_context *vk, uint32_t i)
 {
-	VkImage *images = calloc(vk->count, sizeof(*images));
-	vkGetSwapchainImagesKHR(vk->device, vk->swapchain, &vk->count, images);
-	vk->frame = calloc(vk->count, sizeof(*vk->frame));
-	VkResult r = VK_ERROR_OUT_OF_HOST_MEMORY;
-	if (vk->frame)
-		for (uint32_t i = 0; i != vk->count; ++i) {
+	VkResult r = VK_SUCCESS;
+	while(1) {
+		if (vk->frame[i].view == VK_NULL_HANDLE) {
 			const struct VkImageViewCreateInfo viewinfo = {
 				.sType          	= VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-				.image          	= images[i],
+				.image          	= vk->frame[i].img,
 				.viewType       	= VK_IMAGE_VIEW_TYPE_2D,
 				.format         	= vk->format,
 				.components     	= {
@@ -636,7 +645,8 @@ static VkResult create_imagery(struct vk_context *vk)
 			if (r != VK_SUCCESS)
 				break;
 			printf("   Создана проекция кадра №%u.\n", i);
-
+		}
+		if (vk->frame[i].fb == VK_NULL_HANDLE) {
 			const struct VkFramebufferCreateInfo fbinfo = {
 				.sType          	= VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
 				.renderPass     	= vk->render_pass,
@@ -650,7 +660,8 @@ static VkResult create_imagery(struct vk_context *vk)
 			if (r != VK_SUCCESS)
 				break;
 			printf("   Создан буфер кадра №%u.\n", i);
-
+		}
+		if (vk->frame[i].cmd == VK_NULL_HANDLE) {
 			const struct VkCommandBufferAllocateInfo allocinfo = {
 				.sType             	= VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
 				.commandPool       	= vk->command_pool,
@@ -669,6 +680,7 @@ static VkResult create_imagery(struct vk_context *vk)
 			r = vkBeginCommandBuffer(vk->frame[i].cmd, &buf_begin);
 			if (r != VK_SUCCESS)
 				break;
+
 			static const union VkClearValue cc = {
 				.color.float32	= { 0.0, 0.0, 0.0, 1.0 },
 			};
@@ -696,7 +708,8 @@ static VkResult create_imagery(struct vk_context *vk)
 			if (r != VK_SUCCESS)
 				break;
 			printf("   Заполнен буфер команд №%u.\n", i);
-
+		}
+		if (vk->frame[i].pending == VK_NULL_HANDLE) {
 			static const struct VkFenceCreateInfo signaled_fence = {
 				.sType	= VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
 				.flags	= VK_FENCE_CREATE_SIGNALED_BIT,
@@ -706,7 +719,8 @@ static VkResult create_imagery(struct vk_context *vk)
 				break;
 			printf("   Создан барьер буфера команд №%u.\n", i);
 		}
-	free(images);
+		break;
+	}
 	return r;
 }
 
@@ -733,6 +747,8 @@ VkResult vk_draw_frame(struct vk_context *vk)
 	uint32_t image_index;
 	VkResult r = vkAcquireNextImageKHR(vk->device, vk->swapchain, 0, vk->semaphore[0],
 	                                   VK_NULL_HANDLE, &image_index);
+	create_frame_processor(vk, image_index);
+
 	static const VkPipelineStageFlags wait_stages[] = {
 		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
 	};
@@ -825,7 +841,6 @@ void vk_window_create(struct wl_display *display, struct wl_surface *surface,
 		create_pipeline(vk);
 		create_command_pool(vk);
 		create_vertex_buffer(vk, vertices, sizeof(vertices));
-		create_imagery(vk);
 		create_sync_objects(vk);
 
 		return;
