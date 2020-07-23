@@ -112,11 +112,6 @@ struct vk_context {
 	/** Хранилище команд для графического процессора          */
 	VkCommandPool   	command_pool;
 
-	/** Буфер вершин                                          */
-	VkBuffer        	vertex_buffer;
-	/** и ассоциированная память.                             */
-	VkDeviceMemory  	vertex_memory;
-
 	/** Графический конвейер                                  */
 	VkPipeline      	graphics_pipeline;
 	/** и описатель его топологии                             */
@@ -133,6 +128,8 @@ struct vk_frame {
 	VkImageView     	view;
 	VkCommandBuffer 	cmd;
 	VkFence         	pending;	///< готовность буфера команд.
+	VkBuffer        	vert_buf;
+	VkDeviceMemory  	vert_mem;
 };
 
 /** Создаёт связанную с Воландом поверхность Вулкан. */
@@ -367,6 +364,7 @@ static VkResult create_command_pool(struct vk_context *vk)
 {
 	const struct VkCommandPoolCreateInfo cmdpoolinfo = {
 		.sType           	= VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+		.flags           	= VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
 		.queueFamilyIndex	= vk->qi[vk_graphics],
 	};
 	VkResult r = vkCreateCommandPool(vk->device, &cmdpoolinfo, allocator, &vk->command_pool);
@@ -596,22 +594,23 @@ VkResult create_buffer(struct vk_context *vk, VkDeviceSize size,
 	return r;
 }
 
-/** Создаёт буфер вершин и распределяет под него память. */
+/** Копирует массив вершин в автоматически создаваемый буфер граф.устройства. */
 static
-VkResult create_vertex_buffer(struct vk_context *vk, const void *vertices, VkDeviceSize size)
+VkResult copy_vertices(struct vk_context *vk,  uint32_t i, const void *vertices, VkDeviceSize size)
 {
-	VkResult r = create_buffer(vk, size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-	                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-	                           &vk->vertex_buffer, &vk->vertex_memory);
+	VkResult r = VK_SUCCESS;
+	if (vk->frame[i].vert_buf == VK_NULL_HANDLE)
+		r = create_buffer(vk, size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+		                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		                  &vk->frame[i].vert_buf, &vk->frame[i].vert_mem);
 	if (r == VK_SUCCESS) {
-		printf("  Создан буфер вершин.\n");
 		void *p;
-		r = vkMapMemory(vk->device, vk->vertex_memory, 0, size, 0, &p);
+		r = vkMapMemory(vk->device, vk->frame[i].vert_mem, 0, size, 0, &p);
 		if (r == VK_SUCCESS) {
-			printf("  Заполнен буфер вершин.\n");
+			printf("   Заполнен буфер вершин №%u.\n", i);
 			memcpy(p, vertices, size);
 		}
-		vkUnmapMemory(vk->device, vk->vertex_memory);
+		vkUnmapMemory(vk->device, vk->frame[i].vert_mem);
 	}
 	return r;
 }
@@ -672,42 +671,6 @@ static VkResult create_frame_processor(struct vk_context *vk, uint32_t i)
 			if (r != VK_SUCCESS)
 				break;
 			printf("   Создан буфер команд №%u.\n", i);
-
-			static const struct VkCommandBufferBeginInfo buf_begin = {
-				.sType           	= VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-				.pInheritanceInfo	= NULL,
-			};
-			r = vkBeginCommandBuffer(vk->frame[i].cmd, &buf_begin);
-			if (r != VK_SUCCESS)
-				break;
-
-			static const union VkClearValue cc = {
-				.color.float32	= { 0.0, 0.0, 0.0, 1.0 },
-			};
-			const struct VkRenderPassBeginInfo rpinfo = {
-				.sType          	= VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-				.renderPass     	= vk->render_pass,
-				.framebuffer    	= vk->frame[i].fb,
-				.renderArea     	= {
-					.offset	= { 0, 0 },
-					.extent	= vk->extent,
-				},
-				.clearValueCount	= 1,
-				.pClearValues   	= &cc,
-			};
-			vkCmdBeginRenderPass(vk->frame[i].cmd, &rpinfo, VK_SUBPASS_CONTENTS_INLINE);
-				vkCmdBindPipeline(vk->frame[i].cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk->graphics_pipeline);
-				vkCmdBindVertexBuffers(vk->frame[i].cmd, 0, 1, &vk->vertex_buffer, &(VkDeviceSize){0});
-				vkCmdDraw(vk->frame[i].cmd, 3, 1, 0, 0);
-			vkCmdEndRenderPass(vk->frame[i].cmd);
-			// Спецификация Вулкан требует:
-			// Если буфер команд является основным, не должно быть
-			// активных инстанций RenderPass.
-			// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#VUID-vkEndCommandBuffer-commandBuffer-00060
-			r = vkEndCommandBuffer(vk->frame[i].cmd);
-			if (r != VK_SUCCESS)
-				break;
-			printf("   Заполнен буфер команд №%u.\n", i);
 		}
 		if (vk->frame[i].pending == VK_NULL_HANDLE) {
 			static const struct VkFenceCreateInfo signaled_fence = {
@@ -720,6 +683,44 @@ static VkResult create_frame_processor(struct vk_context *vk, uint32_t i)
 			printf("   Создан барьер буфера команд №%u.\n", i);
 		}
 		break;
+	}
+	return r;
+}
+
+VkResult command_buffer(struct vk_context *vk, uint32_t i)
+{
+	static const struct VkCommandBufferBeginInfo buf_begin = {
+		.sType           	= VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+		.pInheritanceInfo	= NULL,
+	};
+	VkResult r = vkBeginCommandBuffer(vk->frame[i].cmd, &buf_begin);
+	if (r == VK_SUCCESS) {
+		static const union VkClearValue cc = {
+			.color.float32	= { 0.0, 0.0, 0.0, 1.0 },
+		};
+		const struct VkRenderPassBeginInfo rpinfo = {
+			.sType          	= VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+			.renderPass     	= vk->render_pass,
+			.framebuffer    	= vk->frame[i].fb,
+			.renderArea     	= {
+				.offset	= { 0, 0 },
+				.extent	= vk->extent,
+			},
+			.clearValueCount	= 1,
+			.pClearValues   	= &cc,
+		};
+		vkCmdBeginRenderPass(vk->frame[i].cmd, &rpinfo, VK_SUBPASS_CONTENTS_INLINE);
+			vkCmdBindPipeline(vk->frame[i].cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk->graphics_pipeline);
+			vkCmdBindVertexBuffers(vk->frame[i].cmd, 0, 1, &vk->frame[i].vert_buf, &(VkDeviceSize){0});
+			vkCmdDraw(vk->frame[i].cmd, 3, 1, 0, 0);
+		vkCmdEndRenderPass(vk->frame[i].cmd);
+		// Спецификация Вулкан требует:
+		// Если буфер команд является основным, не должно быть
+		// активных инстанций RenderPass.
+		// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#VUID-vkEndCommandBuffer-commandBuffer-00060
+		r = vkEndCommandBuffer(vk->frame[i].cmd);
+		if (r == VK_SUCCESS)
+			printf("   Заполнен буфер команд №%u.\n", i);
 	}
 	return r;
 }
@@ -738,6 +739,11 @@ VkResult create_sync_objects(struct vk_context *vk) {
 	return VK_SUCCESS;
 }
 
+static const struct vertex2d vertices[] = {
+	{ {+0.0f, -0.5f},	{1.0f, 0.0f, 0.0f} },
+	{ {+0.5f, +0.5f},	{0.0f, 1.0f, 0.0f} },
+	{ {-0.5f, +0.5f},	{0.0f, 0.0f, 1.0f} },
+};
 
 VkResult vk_draw_frame(struct vk_context *vk)
 {
@@ -748,6 +754,8 @@ VkResult vk_draw_frame(struct vk_context *vk)
 	VkResult r = vkAcquireNextImageKHR(vk->device, vk->swapchain, 0, vk->semaphore[0],
 	                                   VK_NULL_HANDLE, &image_index);
 	create_frame_processor(vk, image_index);
+
+	copy_vertices(vk, image_index, vertices, sizeof(vertices));
 
 	static const VkPipelineStageFlags wait_stages[] = {
 		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -764,6 +772,9 @@ VkResult vk_draw_frame(struct vk_context *vk)
 	// Достаточно вызвать vkWaitForFences с тайм-аутом 0.
 	r = vkWaitForFences(vk->device, 1, &vk->frame[image_index].pending, VK_TRUE, 0);
 	r = vkResetFences(vk->device, 1, &vk->frame[image_index].pending);
+
+	command_buffer(vk, image_index);
+
 	const struct VkSubmitInfo gfxcmd = {
 		.sType               	= VK_STRUCTURE_TYPE_SUBMIT_INFO,
 		.waitSemaphoreCount  	= 1,
@@ -802,11 +813,11 @@ void vk_window_destroy(struct vk_context *vk)
 		vkFreeCommandBuffers(vk->device, vk->command_pool, 1, &vk->frame[vk->count].cmd);
 		vkDestroyFramebuffer(vk->device, vk->frame[vk->count].fb, allocator);
 		vkDestroyImageView(vk->device, vk->frame[vk->count].view, allocator);
+		vkFreeMemory(vk->device, vk->frame[vk->count].vert_mem, allocator);
+		vkDestroyBuffer(vk->device, vk->frame[vk->count].vert_buf, allocator);
 	} while (vk->count--);
 	free(vk->frame);
 
-	vkFreeMemory(vk->device, vk->vertex_memory, allocator);
-	vkDestroyBuffer(vk->device, vk->vertex_buffer, allocator);
 	vkDestroyCommandPool(vk->device, vk->command_pool, allocator);
 	vkDestroyPipeline(vk->device, vk->graphics_pipeline, allocator);
 	vkDestroyPipelineLayout(vk->device, vk->pipeline_layout, allocator);
@@ -818,12 +829,6 @@ void vk_window_destroy(struct vk_context *vk)
 	free(vk);
 }
 
-
-static const struct vertex2d vertices[] = {
-	{ {+0.0f, -0.5f},	{1.0f, 0.0f, 0.0f} },
-	{ {+0.5f, +0.5f},	{0.0f, 1.0f, 0.0f} },
-	{ {-0.5f, +0.5f},	{0.0f, 0.0f, 1.0f} },
-};
 
 void vk_window_create(struct wl_display *display, struct wl_surface *surface,
                       uint32_t width, uint32_t height, void **vk_context)
@@ -840,7 +845,6 @@ void vk_window_create(struct wl_display *display, struct wl_surface *surface,
 		create_render(vk);
 		create_pipeline(vk);
 		create_command_pool(vk);
-		create_vertex_buffer(vk, vertices, sizeof(vertices));
 		create_sync_objects(vk);
 
 		return;
