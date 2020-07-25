@@ -16,29 +16,33 @@
  *
  */
 
-#include <string.h>
-
 #include "vulkan.h"
 #include "wayland_window.h"
 
-static const struct vertex2d vertices[] = {
-	{ {+0.0f, -0.5f},	{1.0f, 0.0f, 0.0f} },
-	{ {+0.5f, +0.5f},	{0.0f, 1.0f, 0.0f} },
-	{ {-0.5f, +0.5f},	{0.0f, 0.0f, 1.0f} },
-};
+const float PI = 3.14159f;
 
 static bool draw_frame(void *p)
 {
 	struct vk_context *vk = p;
 	VkResult r = vk_acquire_frame(vk);
 
+	const int cnt = 3;
 	void *dest;
-	r = vk_begin_vertex_buffer(vk, sizeof(vertices), &dest);
-		memcpy(dest, vertices, sizeof(vertices));
+	r = vk_begin_vertex_buffer(vk, cnt * sizeof(struct vertex2d), &dest);
+	struct vertex2d *vert = dest;
+	static float angle;
+	angle = angle + PI/192;
+	for (int i = 0; i < cnt; ++i) {
+		vert[i].pos.x = 0.95f * cosf(angle + i * 2*PI/cnt - PI/2);
+		vert[i].pos.y = 0.95f * sinf(angle + i * 2*PI/cnt - PI/2);
+		vert[i].color.r = 0.3f + 0.7f * cosf(2 * angle + i * 2*PI/(cnt+3));
+		vert[i].color.g = 0.3f + 0.7f * cosf(3 * angle + i * 2*PI/(cnt+2));
+		vert[i].color.b = 0.3f + 0.7f * cosf(4 * angle + i * 2*PI/(cnt+1));
+	}
 	vk_end_vertex_buffer(vk);
 
 	r = vk_begin_render_cmd(vk);
-		vk_cmd_draw_vertices(vk, sizeof(vertices)/sizeof(*vertices), 0);
+		vk_cmd_draw_vertices(vk, cnt, 0);
 	r = vk_end_render_cmd(vk);
 
 	r = vk_present_frame(vk);
@@ -62,7 +66,7 @@ int main(int argc, char *argv[])
 		.render	= &vulkan,
 		.title	= "Окно",
 		.width	= 640,
-		.height	= 480,
+		.height	= 640,
 	};
 	window_create(&window);
 	window_dispatch();

@@ -747,7 +747,6 @@ VkResult vk_end_render_cmd(struct vk_context *vk)
 	// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#VUID-vkEndCommandBuffer-commandBuffer-00060
 	VkResult r = vkEndCommandBuffer(vk->frame[vk->active].cmd);
 	if (r == VK_SUCCESS) {
-		printf("   Заполнен буфер команд №%u.\n", vk->active);
 		static const VkPipelineStageFlags wait_stages[] = {
 			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
 		};

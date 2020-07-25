@@ -5,7 +5,7 @@ HEADERS := $(wildcard src/*.h)
 SOURCES := $(wildcard src/*.c)
 SHADERS := src/shader.frag src/shader.vert
 CFLAGS  := -std=c18 -Wall
-LDFLAGS :=
+LDFLAGS := -lm
 CC ?= cc
 #GLCFLAGS :=
 GLC ?= glslangValidator -V
