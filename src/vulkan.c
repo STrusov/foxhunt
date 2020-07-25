@@ -104,6 +104,8 @@ struct vk_context {
 	VkFormat        	format;
 	/** Количество кадров в последовательности.               */
 	uint32_t        	count;
+	/** Индекс текущего кадра.                                */
+	uint32_t        	active;
 	/** Последовательность кадров.                            */
 	struct vk_frame 	*frame;
 
@@ -594,36 +596,38 @@ VkResult create_buffer(struct vk_context *vk, VkDeviceSize size,
 	return r;
 }
 
-/** Копирует массив вершин в автоматически создаваемый буфер граф.устройства. */
-static
-VkResult copy_vertices(struct vk_context *vk,  uint32_t i, const void *vertices, VkDeviceSize size)
+/** Подготавливает буфер вершин для заполнения. */
+VkResult vk_begin_vertex_buffer(struct vk_context *vk, VkDeviceSize size, void **dest)
 {
 	VkResult r = VK_SUCCESS;
-	if (vk->frame[i].vert_buf == VK_NULL_HANDLE)
+	if (vk->frame[vk->active].vert_buf == VK_NULL_HANDLE)
 		r = create_buffer(vk, size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
 		                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-		                  &vk->frame[i].vert_buf, &vk->frame[i].vert_mem);
-	if (r == VK_SUCCESS) {
-		void *p;
-		r = vkMapMemory(vk->device, vk->frame[i].vert_mem, 0, size, 0, &p);
-		if (r == VK_SUCCESS) {
-			printf("   Заполнен буфер вершин №%u.\n", i);
-			memcpy(p, vertices, size);
-		}
-		vkUnmapMemory(vk->device, vk->frame[i].vert_mem);
-	}
+		                  &vk->frame[vk->active].vert_buf, &vk->frame[vk->active].vert_mem);
+	*dest = NULL;
+	if (r == VK_SUCCESS)
+		r = vkMapMemory(vk->device, vk->frame[vk->active].vert_mem, 0, size, 0, dest);
 	return r;
 }
 
-/** Создаёт буфер кадра и команд для его построения. */
-static VkResult create_frame_processor(struct vk_context *vk, uint32_t i)
+void vk_end_vertex_buffer(struct vk_context *vk)
 {
-	VkResult r = VK_SUCCESS;
-	while(1) {
-		if (vk->frame[i].view == VK_NULL_HANDLE) {
+	// TODO vkFlushMappedMemoryRanges()
+	vkUnmapMemory(vk->device, vk->frame[vk->active].vert_mem);
+}
+
+VkResult vk_acquire_frame(struct vk_context *vk)
+{
+	// Таймаут UINT64_MAX (бесконечное ожидание) допустим когда количество уже
+	// захваченных кадров не превышает разность между размером ряда и
+	// minImageCount, возвращённой vkGetPhysicalDeviceSurfaceCapabilities2KHR().
+	VkResult r = vkAcquireNextImageKHR(vk->device, vk->swapchain, 0, vk->semaphore[0],
+	                                   VK_NULL_HANDLE, &vk->active);
+	while(r == VK_SUCCESS) {
+		if (vk->frame[vk->active].view == VK_NULL_HANDLE) {
 			const struct VkImageViewCreateInfo viewinfo = {
 				.sType          	= VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-				.image          	= vk->frame[i].img,
+				.image          	= vk->frame[vk->active].img,
 				.viewType       	= VK_IMAGE_VIEW_TYPE_2D,
 				.format         	= vk->format,
 				.components     	= {
@@ -640,60 +644,73 @@ static VkResult create_frame_processor(struct vk_context *vk, uint32_t i)
 					.layerCount  	= 1,
 				},
 			};
-			r = vkCreateImageView(vk->device, &viewinfo, allocator, &vk->frame[i].view);
+			r = vkCreateImageView(vk->device, &viewinfo, allocator, &vk->frame[vk->active].view);
 			if (r != VK_SUCCESS)
 				break;
-			printf("   Создана проекция кадра №%u.\n", i);
+			printf("   Создана проекция кадра №%u.\n", vk->active);
 		}
-		if (vk->frame[i].fb == VK_NULL_HANDLE) {
+		if (vk->frame[vk->active].fb == VK_NULL_HANDLE) {
 			const struct VkFramebufferCreateInfo fbinfo = {
 				.sType          	= VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
 				.renderPass     	= vk->render_pass,
 				.attachmentCount	= 1,
-				.pAttachments   	= &vk->frame[i].view,
+				.pAttachments   	= &vk->frame[vk->active].view,
 				.width          	= vk->extent.width,
 				.height         	= vk->extent.height,
 				.layers         	= 1,
 			};
-			r = vkCreateFramebuffer(vk->device, &fbinfo, allocator, &vk->frame[i].fb);
+			r = vkCreateFramebuffer(vk->device, &fbinfo, allocator, &vk->frame[vk->active].fb);
 			if (r != VK_SUCCESS)
 				break;
-			printf("   Создан буфер кадра №%u.\n", i);
+			printf("   Создан буфер кадра №%u.\n", vk->active);
 		}
-		if (vk->frame[i].cmd == VK_NULL_HANDLE) {
+		if (vk->frame[vk->active].cmd == VK_NULL_HANDLE) {
 			const struct VkCommandBufferAllocateInfo allocinfo = {
 				.sType             	= VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
 				.commandPool       	= vk->command_pool,
 				.level             	= VK_COMMAND_BUFFER_LEVEL_PRIMARY,
 				.commandBufferCount	= 1,
 			};
-			r = vkAllocateCommandBuffers(vk->device, &allocinfo, &vk->frame[i].cmd);
+			r = vkAllocateCommandBuffers(vk->device, &allocinfo, &vk->frame[vk->active].cmd);
 			if (r != VK_SUCCESS)
 				break;
-			printf("   Создан буфер команд №%u.\n", i);
+			printf("   Создан буфер команд №%u.\n", vk->active);
 		}
-		if (vk->frame[i].pending == VK_NULL_HANDLE) {
+		if (vk->frame[vk->active].pending == VK_NULL_HANDLE) {
 			static const struct VkFenceCreateInfo signaled_fence = {
 				.sType	= VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
 				.flags	= VK_FENCE_CREATE_SIGNALED_BIT,
 			};
-			r = vkCreateFence(vk->device, &signaled_fence, allocator, &vk->frame[i].pending);
+			r = vkCreateFence(vk->device, &signaled_fence, allocator, &vk->frame[vk->active].pending);
 			if (r != VK_SUCCESS)
 				break;
-			printf("   Создан барьер буфера команд №%u.\n", i);
+			printf("   Создан барьер буфера команд №%u.\n", vk->active);
 		}
 		break;
 	}
 	return r;
 }
 
-VkResult command_buffer(struct vk_context *vk, uint32_t i)
+VkResult vk_begin_render_cmd(struct vk_context *vk)
 {
+	// TODO
+	// Без синхронизации по vkQueueWaitIdle() или параметру fence vkQueueSubmit()
+	// валидатор рапортует, что буфер команд занят. https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#VUID-vkQueueSubmit-pCommandBuffers-00071
+	// Всего в конфигурации 4 кадра в очереди, vkAcquireNextImageKHR()
+	// захватывает попеременно первые 2, синхронно с кадровой развёрткой.
+	// Т.о. буфер якобы занят на протяжении 2-х кадров.
+	// При этом замечаний по семафорам, намеренно общим для всех кадров, нет; и
+	// semaphore[1] сигналится по завершению исполнения команд буфера,
+	// то есть _одновременно_ с fence.
+	// Достаточно вызвать vkWaitForFences с тайм-аутом 0.
+	vkWaitForFences(vk->device, 1, &vk->frame[vk->active].pending, VK_TRUE, 0);
+	vkResetFences(vk->device, 1, &vk->frame[vk->active].pending);
+
 	static const struct VkCommandBufferBeginInfo buf_begin = {
 		.sType           	= VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
 		.pInheritanceInfo	= NULL,
 	};
-	VkResult r = vkBeginCommandBuffer(vk->frame[i].cmd, &buf_begin);
+	VkResult r = vkBeginCommandBuffer(vk->frame[vk->active].cmd, &buf_begin);
 	if (r == VK_SUCCESS) {
 		static const union VkClearValue cc = {
 			.color.float32	= { 0.0, 0.0, 0.0, 1.0 },
@@ -701,7 +718,7 @@ VkResult command_buffer(struct vk_context *vk, uint32_t i)
 		const struct VkRenderPassBeginInfo rpinfo = {
 			.sType          	= VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
 			.renderPass     	= vk->render_pass,
-			.framebuffer    	= vk->frame[i].fb,
+			.framebuffer    	= vk->frame[vk->active].fb,
 			.renderArea     	= {
 				.offset	= { 0, 0 },
 				.extent	= vk->extent,
@@ -709,18 +726,42 @@ VkResult command_buffer(struct vk_context *vk, uint32_t i)
 			.clearValueCount	= 1,
 			.pClearValues   	= &cc,
 		};
-		vkCmdBeginRenderPass(vk->frame[i].cmd, &rpinfo, VK_SUBPASS_CONTENTS_INLINE);
-			vkCmdBindPipeline(vk->frame[i].cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk->graphics_pipeline);
-			vkCmdBindVertexBuffers(vk->frame[i].cmd, 0, 1, &vk->frame[i].vert_buf, &(VkDeviceSize){0});
-			vkCmdDraw(vk->frame[i].cmd, 3, 1, 0, 0);
-		vkCmdEndRenderPass(vk->frame[i].cmd);
-		// Спецификация Вулкан требует:
-		// Если буфер команд является основным, не должно быть
-		// активных инстанций RenderPass.
-		// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#VUID-vkEndCommandBuffer-commandBuffer-00060
-		r = vkEndCommandBuffer(vk->frame[i].cmd);
-		if (r == VK_SUCCESS)
-			printf("   Заполнен буфер команд №%u.\n", i);
+		vkCmdBeginRenderPass(vk->frame[vk->active].cmd, &rpinfo, VK_SUBPASS_CONTENTS_INLINE);
+		vkCmdBindPipeline(vk->frame[vk->active].cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk->graphics_pipeline);
+	}
+	return r;
+}
+
+void vk_cmd_draw_vertices(struct vk_context *vk, uint32_t count, uint32_t first)
+{
+	vkCmdBindVertexBuffers(vk->frame[vk->active].cmd, 0, 1, &vk->frame[vk->active].vert_buf, &(VkDeviceSize){0});
+	vkCmdDraw(vk->frame[vk->active].cmd, count, 1, first, 0);
+}
+
+VkResult vk_end_render_cmd(struct vk_context *vk)
+{
+	vkCmdEndRenderPass(vk->frame[vk->active].cmd);
+	// Спецификация Вулкан требует:
+	// Если буфер команд является основным, не должно быть
+	// активных инстанций RenderPass.
+	// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#VUID-vkEndCommandBuffer-commandBuffer-00060
+	VkResult r = vkEndCommandBuffer(vk->frame[vk->active].cmd);
+	if (r == VK_SUCCESS) {
+		printf("   Заполнен буфер команд №%u.\n", vk->active);
+		static const VkPipelineStageFlags wait_stages[] = {
+			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		};
+		const struct VkSubmitInfo gfxcmd = {
+			.sType               	= VK_STRUCTURE_TYPE_SUBMIT_INFO,
+			.waitSemaphoreCount  	= 1,
+			.pWaitSemaphores     	= &vk->semaphore[0],
+			.pWaitDstStageMask   	= wait_stages,
+			.commandBufferCount  	= 1,
+			.pCommandBuffers     	= &vk->frame[vk->active].cmd,
+			.signalSemaphoreCount	= 1,
+			.pSignalSemaphores   	= &vk->semaphore[1],
+		};
+		r = vkQueueSubmit(vk->queue[vk_graphics], 1, &gfxcmd, vk->frame[vk->active].pending);
 	}
 	return r;
 }
@@ -739,66 +780,19 @@ VkResult create_sync_objects(struct vk_context *vk) {
 	return VK_SUCCESS;
 }
 
-static const struct vertex2d vertices[] = {
-	{ {+0.0f, -0.5f},	{1.0f, 0.0f, 0.0f} },
-	{ {+0.5f, +0.5f},	{0.0f, 1.0f, 0.0f} },
-	{ {-0.5f, +0.5f},	{0.0f, 0.0f, 1.0f} },
-};
-
-VkResult vk_draw_frame(struct vk_context *vk)
+VkResult vk_present_frame(struct vk_context *vk)
 {
-	// Таймаут UINT64_MAX (бесконечное ожидание) допустим когда количество уже
-	// захваченных кадров не превышает разность между размером ряда и
-	// minImageCount, возвращённой vkGetPhysicalDeviceSurfaceCapabilities2KHR().
-	uint32_t image_index;
-	VkResult r = vkAcquireNextImageKHR(vk->device, vk->swapchain, 0, vk->semaphore[0],
-	                                   VK_NULL_HANDLE, &image_index);
-	create_frame_processor(vk, image_index);
-
-	copy_vertices(vk, image_index, vertices, sizeof(vertices));
-
-	static const VkPipelineStageFlags wait_stages[] = {
-		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-	};
-	// TODO
-	// Без синхронизации по vkQueueWaitIdle() или параметру fence vkQueueSubmit()
-	// валидатор рапортует, что буфер команд занят. https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#VUID-vkQueueSubmit-pCommandBuffers-00071
-	// Всего в конфигурации 4 кадра в очереди, vkAcquireNextImageKHR()
-	// захватывает попеременно первые 2, синхронно с кадровой развёрткой.
-	// Т.о. буфер якобы занят на протяжении 2-х кадров.
-	// При этом замечаний по семафорам, намеренно общим для всех кадров, нет; и
-	// semaphore[1] сигналится по завершению исполнения команд буфера,
-	// то есть _одновременно_ с fence.
-	// Достаточно вызвать vkWaitForFences с тайм-аутом 0.
-	r = vkWaitForFences(vk->device, 1, &vk->frame[image_index].pending, VK_TRUE, 0);
-	r = vkResetFences(vk->device, 1, &vk->frame[image_index].pending);
-
-	command_buffer(vk, image_index);
-
-	const struct VkSubmitInfo gfxcmd = {
-		.sType               	= VK_STRUCTURE_TYPE_SUBMIT_INFO,
-		.waitSemaphoreCount  	= 1,
-		.pWaitSemaphores     	= &vk->semaphore[0],
-		.pWaitDstStageMask   	= wait_stages,
-		.commandBufferCount  	= 1,
-		.pCommandBuffers     	= &vk->frame[image_index].cmd,
-		.signalSemaphoreCount	= 1,
-		.pSignalSemaphores   	= &vk->semaphore[1],
-	};
-	r = vkQueueSubmit(vk->queue[vk_graphics], 1, &gfxcmd, vk->frame[image_index].pending);
 	const struct VkPresentInfoKHR present = {
 		.sType             	= VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
 		.waitSemaphoreCount	= 1,
 		.pWaitSemaphores   	= &vk->semaphore[1],
 		.swapchainCount    	= 1,
 		.pSwapchains       	= &vk->swapchain,
-		.pImageIndices     	= &image_index,
+		.pImageIndices     	= &vk->active,
 		.pResults          	= NULL,
 	};
-	r = vkQueuePresentKHR(vk->queue[vk_presentation], &present);
-	if (r < VK_SUCCESS) {
-		abort();
-	}
+	VkResult r = vkQueuePresentKHR(vk->queue[vk_presentation], &present);
+	assert(r >= VK_SUCCESS);
 	return r;
 }
 
