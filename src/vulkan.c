@@ -109,6 +109,11 @@ struct vk_context {
 	/** Последовательность кадров.                            */
 	struct vk_frame 	*frame;
 
+	/** Набор семафоров для \see vk_acquire_frame().          */
+	VkSemaphore     	*acq_pool;
+	/** Текущий выбранный из набора.                          */
+	uint32_t        	acq_current;
+
 	/** Представляет коллекцию привязок, шагов и зависимостей между ними. */
 	VkRenderPass    	render_pass;
 	/** Хранилище команд для графического процессора          */
@@ -118,15 +123,14 @@ struct vk_context {
 	VkPipeline      	graphics_pipeline;
 	/** и описатель его топологии                             */
 	VkPipelineLayout	pipeline_layout;
-
-	/** Флажки синхронизации очередей.                        */
-	VkSemaphore     	semaphore[2];
 };
 
 /** Буфер кадра, проекция и команды построения изображения. */
 struct vk_frame {
 	VkImage         	img;
 	VkFramebuffer   	fb;
+	VkSemaphore     	acquired;
+	VkSemaphore     	rendered;
 	VkImageView     	view;
 	VkCommandBuffer 	cmd;
 	VkFence         	pending;	///< готовность буфера команд.
@@ -237,6 +241,11 @@ next_queue:
 	return r;
 }
 
+/** Простой семафор. */
+static const struct VkSemaphoreCreateInfo ssci = {
+	.sType	= VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+};
+
 /** Подготавливает описатель видеоряда. */
 static VkResult create_swapchain(struct vk_context *vk, uint32_t width, uint32_t height)
 {
@@ -300,11 +309,18 @@ static VkResult create_swapchain(struct vk_context *vk, uint32_t width, uint32_t
 		VkImage *images = calloc(vk->count, sizeof(*images));
 		vkGetSwapchainImagesKHR(vk->device, vk->swapchain, &vk->count, images);
 		vk->frame = calloc(vk->count, sizeof(*vk->frame));
-		if (!images || !vk->frame)
+		vk->acq_pool = calloc(vk->count, sizeof(*vk->acq_pool));
+		if (!images || !vk->frame || !vk->acq_pool)
 			r = VK_ERROR_OUT_OF_HOST_MEMORY;
-		else
-			for (int i = 0; i < vk->count; ++i)
+		else {
+			for (int i = 0; i < vk->count; ++i) {
 				vk->frame[i].img = images[i];
+				r = vkCreateSemaphore(vk->device, &ssci, allocator, &vk->acq_pool[i]);
+				if (r != VK_SUCCESS)
+					break;
+			}
+			printf("  Созданы семафоры захвата кадров (%u).\n", vk->count);
+		}
 		free(images);
 	}
 	free(formats);
@@ -621,9 +637,19 @@ VkResult vk_acquire_frame(struct vk_context *vk)
 	// Таймаут UINT64_MAX (бесконечное ожидание) допустим когда количество уже
 	// захваченных кадров не превышает разность между размером ряда и
 	// minImageCount, возвращённой vkGetPhysicalDeviceSurfaceCapabilities2KHR().
-	VkResult r = vkAcquireNextImageKHR(vk->device, vk->swapchain, 0, vk->semaphore[0],
+	VkResult r = vkAcquireNextImageKHR(vk->device, vk->swapchain, 0,
+	                                   vk->acq_pool[vk->acq_current],
 	                                   VK_NULL_HANDLE, &vk->active);
-	while(r == VK_SUCCESS) {
+	// TODO VK_SUBOPTIMAL_KHR
+	while(r >= VK_SUCCESS) {
+		vk->frame[vk->active].acquired = vk->acq_pool[vk->acq_current];
+		vk->acq_current = (vk->acq_current + 1) % vk->count;
+		if (vk->frame[vk->active].rendered == VK_NULL_HANDLE) {
+			r = vkCreateSemaphore(vk->device, &ssci, allocator, &vk->frame[vk->active].rendered);
+			if (r != VK_SUCCESS)
+				break;
+			printf("   Создан семафор готовности изображения №%u.\n", vk->active);
+		}
 		if (vk->frame[vk->active].view == VK_NULL_HANDLE) {
 			const struct VkImageViewCreateInfo viewinfo = {
 				.sType          	= VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -753,30 +779,16 @@ VkResult vk_end_render_cmd(struct vk_context *vk)
 		const struct VkSubmitInfo gfxcmd = {
 			.sType               	= VK_STRUCTURE_TYPE_SUBMIT_INFO,
 			.waitSemaphoreCount  	= 1,
-			.pWaitSemaphores     	= &vk->semaphore[0],
+			.pWaitSemaphores     	= &vk->frame[vk->active].acquired,
 			.pWaitDstStageMask   	= wait_stages,
 			.commandBufferCount  	= 1,
 			.pCommandBuffers     	= &vk->frame[vk->active].cmd,
 			.signalSemaphoreCount	= 1,
-			.pSignalSemaphores   	= &vk->semaphore[1],
+			.pSignalSemaphores   	= &vk->frame[vk->active].rendered,
 		};
 		r = vkQueueSubmit(vk->queue[vk_graphics], 1, &gfxcmd, vk->frame[vk->active].pending);
 	}
 	return r;
-}
-
-VkResult create_sync_objects(struct vk_context *vk) {
-	static const struct VkSemaphoreCreateInfo sc = {
-		.sType	= VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-	};
-	const int n_sem = sizeof(vk->semaphore)/sizeof(*vk->semaphore);
-	for (int i = 0; i < n_sem; ++i) {
-		VkResult r = vkCreateSemaphore(vk->device, &sc, allocator, &vk->semaphore[i]);
-		if (r != VK_SUCCESS)
-			return r;
-	}
-	printf("  Созданы объекты синхронизации (%i).\n", n_sem);
-	return VK_SUCCESS;
 }
 
 VkResult vk_present_frame(struct vk_context *vk)
@@ -784,7 +796,7 @@ VkResult vk_present_frame(struct vk_context *vk)
 	const struct VkPresentInfoKHR present = {
 		.sType             	= VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
 		.waitSemaphoreCount	= 1,
-		.pWaitSemaphores   	= &vk->semaphore[1],
+		.pWaitSemaphores   	= &vk->frame[vk->active].rendered,
 		.swapchainCount    	= 1,
 		.pSwapchains       	= &vk->swapchain,
 		.pImageIndices     	= &vk->active,
@@ -799,9 +811,10 @@ VkResult vk_present_frame(struct vk_context *vk)
 void vk_window_destroy(struct vk_context *vk)
 {
 	vkDeviceWaitIdle(vk->device);
-	for (int i = 0; i < sizeof(vk->semaphore)/sizeof(*vk->semaphore); ++i)
-		vkDestroySemaphore(vk->device, vk->semaphore[i], allocator);
 	do {
+		vkDestroySemaphore(vk->device, vk->acq_pool[vk->count], allocator);
+		// Из-за ленивой инициализации часть может быть пуста.
+		vkDestroySemaphore(vk->device, vk->frame[vk->count].rendered, allocator);
 		vkDestroyFence(vk->device,  vk->frame[vk->count].pending, allocator);
 		vkFreeCommandBuffers(vk->device, vk->command_pool, 1, &vk->frame[vk->count].cmd);
 		vkDestroyFramebuffer(vk->device, vk->frame[vk->count].fb, allocator);
@@ -809,6 +822,7 @@ void vk_window_destroy(struct vk_context *vk)
 		vkFreeMemory(vk->device, vk->frame[vk->count].vert_mem, allocator);
 		vkDestroyBuffer(vk->device, vk->frame[vk->count].vert_buf, allocator);
 	} while (vk->count--);
+	free(vk->acq_pool);
 	free(vk->frame);
 
 	vkDestroyCommandPool(vk->device, vk->command_pool, allocator);
@@ -838,7 +852,6 @@ void vk_window_create(struct wl_display *display, struct wl_surface *surface,
 		create_render(vk);
 		create_pipeline(vk);
 		create_command_pool(vk);
-		create_sync_objects(vk);
 
 		return;
 	}
