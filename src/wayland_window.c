@@ -222,14 +222,64 @@ static void on_pointer_axis_discrete(void *p, struct wl_pointer *pointer,
 	inp->pointer_event |= pointer_axis_discrete;
 }
 
+static uint32_t resize_edge(struct window *window, int x, int y)
+{
+	uint32_t resize = XDG_TOPLEVEL_RESIZE_EDGE_NONE;
+	if (x < window->border) {
+		resize = XDG_TOPLEVEL_RESIZE_EDGE_LEFT;
+	} else if (x >= window->width - window->border) {
+		resize = XDG_TOPLEVEL_RESIZE_EDGE_RIGHT;
+	}
+	if (y < window->border) {
+		switch (resize) {
+		default:
+		case XDG_TOPLEVEL_RESIZE_EDGE_NONE:
+			resize = XDG_TOPLEVEL_RESIZE_EDGE_TOP;
+			break;
+		case XDG_TOPLEVEL_RESIZE_EDGE_RIGHT:
+			resize = XDG_TOPLEVEL_RESIZE_EDGE_TOP_RIGHT;
+			break;
+		case XDG_TOPLEVEL_RESIZE_EDGE_LEFT:
+			resize = XDG_TOPLEVEL_RESIZE_EDGE_TOP_LEFT;
+			break;
+		}
+	} else if (y >= window->height - window->border) {
+		switch (resize) {
+		default:
+		case XDG_TOPLEVEL_RESIZE_EDGE_NONE:
+			resize = XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM;
+			break;
+		case XDG_TOPLEVEL_RESIZE_EDGE_RIGHT:
+			resize = XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_RIGHT;
+			break;
+		case XDG_TOPLEVEL_RESIZE_EDGE_LEFT:
+			resize = XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_LEFT;
+			break;
+		}
+	}
+	return resize;
+}
+
 /** Данные от устройства переданы в количестве необходимом для обработки. */
 static void on_pointer_frame(void *p, struct wl_pointer *pointer)
 {
 	struct seat_ctx *inp = p;
 	struct window *window = inp->pointer_focus;
+	const int x = wl_fixed_to_int(inp->pointer_x);
+	const int y = wl_fixed_to_int(inp->pointer_y);
 
+	// По щелчку у кромки изменяем размер окна, если позволено.
+	// Если щелчёк не обработан, двигаем окно.
 	if (pointer_button & inp->pointer_event) {
-		xdg_toplevel_move(window->toplevel, seat, inp->pointer_serial);
+		uint32_t resize = XDG_TOPLEVEL_RESIZE_EDGE_NONE;
+		if (window->render->resize) {
+			resize = resize_edge(window, x, y);
+		}
+		if (resize != XDG_TOPLEVEL_RESIZE_EDGE_NONE) {
+			xdg_toplevel_resize(window->toplevel, seat, inp->pointer_serial, resize);
+		} else {
+			xdg_toplevel_move(window->toplevel, seat, inp->pointer_serial);
+		}
 	}
 
 	inp->pointer_event = 0;
@@ -372,9 +422,14 @@ static void draw_frame(void *p, struct wl_callback *cb, uint32_t time)
 
 static void on_xdg_surface_configure(void *p, struct xdg_surface *surface, uint32_t serial)
 {
+	printf("on_xdg_surface_configure\n");
 	struct window *window = p;
 	xdg_surface_ack_configure(surface, serial);
-	if (window->pending_configure) {
+	if (window->pending_resize) {
+		assert(window->render->resize);
+		window->render->resize(window->render_ctx, window->width, window->height);
+		window->pending_resize = false;
+	} else if (window->pending_configure) {
 		// выполняет wl_surface_commit()
 		draw_frame(window, NULL, 0);
 		window->pending_configure = false;
@@ -393,13 +448,18 @@ static void on_toplevel_configure(void *p, struct xdg_toplevel *toplevel,
 
 	// Нулевым параметром композитор указывает, что следует установить требуемый
 	// клиенту размер окна. Сигнализируем флажком для on_xdg_surface_configure().
+	// Иначе изменяем размер окна, если требуется.
 	if (!width || !height) {
 		window->pending_configure = true;
-	}
-
-	if (width && height) {
-		window->width  = width;
-		window->height = height;
+	} else {
+		if (window->width != width && width >= 2 * window->border) {
+			window->width  = width;
+			window->pending_resize = true;
+		}
+		if (window->height != height && height >= 2 * window->border) {
+			window->height = height;
+			window->pending_resize = true;
+		}
 	}
 }
 
@@ -417,6 +477,9 @@ const static struct xdg_toplevel_listener toplevel_listener = {
 
 void window_create(struct window *window)
 {
+	assert(2 * window->border <= window->width);
+	assert(2 * window->border <= window->height);
+
 	window->wl_surface = wl_compositor_create_surface(compositor);
 	wl_surface_set_user_data(window->wl_surface, window);
 

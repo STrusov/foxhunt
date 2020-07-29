@@ -23,6 +23,7 @@ void vk_window_create(struct wl_display *, struct wl_surface *,
 
 void vk_window_destroy(struct vk_context*);
 
+void vk_window_resize(void *vk_context, uint32_t width, uint32_t height);
 
 struct pos2d {
 	float	x;

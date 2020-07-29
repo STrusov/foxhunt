@@ -836,6 +836,11 @@ void vk_window_destroy(struct vk_context *vk)
 	free(vk);
 }
 
+void vk_window_resize(void *p, uint32_t width, uint32_t height)
+{
+	struct vk_context *vk = p;
+	create_swapchain(vk, width, height);
+}
 
 void vk_window_create(struct wl_display *display, struct wl_surface *surface,
                       uint32_t width, uint32_t height, void **vk_context)

@@ -52,6 +52,7 @@ static bool draw_frame(void *p)
 static const struct render vulkan = {
 	.create    	= vk_window_create,
 	.draw_frame	= draw_frame,
+	.resize    	= vk_window_resize,
 };
 
 int main(int argc, char *argv[])
@@ -67,6 +68,7 @@ int main(int argc, char *argv[])
 		.title	= "Окно",
 		.width	= 640,
 		.height	= 640,
+		.border = 10,
 	};
 	window_create(&window);
 	window_dispatch();

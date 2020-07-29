@@ -13,6 +13,8 @@ struct window {
 	int                 	width;
 	/** Высота окна                         */
 	int                 	height;
+	/** Ширина рамки, захватываемой для изменения размеров */
+	int                 	border;
 
 	/** Данные построителя изображений      */
 	void                	*render_ctx;
@@ -24,6 +26,7 @@ struct window {
 	struct xdg_toplevel 	*toplevel;
 
 	bool                	pending_configure;
+	bool                	pending_resize;
 };
 
 /** Интерфейс для отрисовки окна */
@@ -33,6 +36,8 @@ struct render {
 	               uint32_t height, void **render_ctx);
 	/** Вызывается, когда композитор готов отобразить новый кадр.*/
 	bool (*draw_frame)(void *render_ctx);
+	/** Изменяет размер окна.    */
+	void (*resize)(void *render_ctx, uint32_t width, uint32_t height);
 };
 
 /** Инициализирует сеанс и интерфейсы для связи с сервером. */
