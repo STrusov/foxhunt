@@ -353,47 +353,50 @@ static struct wl_buffer *shm_buffer_create(struct window *window)
 }
 
 
-static void on_xdg_surface_configure(void *p, struct xdg_surface *surface, uint32_t serial)
-{
-	struct window *window = p;
-	xdg_surface_ack_configure(surface, serial);
-/** /
-	struct wl_buffer *buffer = shm_buffer_create(window);
-	wl_surface_attach(window->wl_surface, buffer, 0, 0);
-	wl_surface_commit(window->wl_surface);
-/**/
-}
-
-static const struct xdg_surface_listener xdg_surface_listener = {
-	.configure = &on_xdg_surface_configure,
-};
-
-const static struct wl_callback_listener frame_listener;
-
 /** Вызывается композитором, когда пришло время отрисовать окно. */
 static void draw_frame(void *p, struct wl_callback *cb, uint32_t time)
 {
-	wl_callback_destroy(cb);
+	if (cb)
+		wl_callback_destroy(cb);
 
 	struct window *w = p;
 	assert(w->render->draw_frame);
 	w->render->draw_frame(w->render_ctx);
 
 	// TODO Vulkan неявно вызывает нижеследующее в vkQueuePresentKHR();
-	wl_callback_add_listener(wl_surface_frame(w->wl_surface), &frame_listener, w);
+	static const struct wl_callback_listener nf = { draw_frame };
+	wl_callback_add_listener(wl_surface_frame(w->wl_surface), &nf, w);
 	wl_surface_commit(w->wl_surface);
 }
 
-static const struct wl_callback_listener frame_listener = {
-	.done = draw_frame,
-};
 
+static void on_xdg_surface_configure(void *p, struct xdg_surface *surface, uint32_t serial)
+{
+	struct window *window = p;
+	xdg_surface_ack_configure(surface, serial);
+	if (window->pending_configure) {
+		// выполняет wl_surface_commit()
+		draw_frame(window, NULL, 0);
+		window->pending_configure = false;
+	}
+}
+
+static const struct xdg_surface_listener xdg_surface_listener = {
+	.configure = &on_xdg_surface_configure,
+};
 
 static void on_toplevel_configure(void *p, struct xdg_toplevel *toplevel,
                                   int32_t width, int32_t height, struct wl_array *states)
 {
 	struct window *window = p;
 	printf("Размер окна: %u*%u.\n", width, height);
+
+	// Нулевым параметром композитор указывает, что следует установить требуемый
+	// клиенту размер окна. Сигнализируем флажком для on_xdg_surface_configure().
+	if (!width || !height) {
+		window->pending_configure = true;
+	}
+
 	if (width && height) {
 		window->width  = width;
 		window->height = height;
@@ -427,8 +430,7 @@ void window_create(struct window *window)
 	assert(window->render->create);
 	window->render->create(display, window->wl_surface, window->width,
 	                       window->height, &window->render_ctx);
-	if (window->render_ctx)
-		wl_callback_add_listener(wl_surface_frame(window->wl_surface), &frame_listener, window);
+	assert(window->render_ctx);
 
 	wl_surface_commit(window->wl_surface);
 }

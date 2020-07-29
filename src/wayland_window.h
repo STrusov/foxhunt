@@ -22,6 +22,8 @@ struct window {
 	struct xdg_surface  	*xdg_surface;
 	/** Роль поверхности - главное окно     */
 	struct xdg_toplevel 	*toplevel;
+
+	bool                	pending_configure;
 };
 
 /** Интерфейс для отрисовки окна */
