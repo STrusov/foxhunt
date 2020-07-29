@@ -389,6 +389,29 @@ static const struct wl_callback_listener frame_listener = {
 };
 
 
+static void on_toplevel_configure(void *p, struct xdg_toplevel *toplevel,
+                                  int32_t width, int32_t height, struct wl_array *states)
+{
+	struct window *window = p;
+	printf("Размер окна: %u*%u.\n", width, height);
+	if (width && height) {
+		window->width  = width;
+		window->height = height;
+	}
+}
+
+static void on_toplevel_close(void *p, struct xdg_toplevel *toplevel)
+{
+	struct window *window = p;
+	printf("Закрытие.\n");
+}
+
+const static struct xdg_toplevel_listener toplevel_listener = {
+	.configure = on_toplevel_configure,
+	.close     = on_toplevel_close,
+};
+
+
 void window_create(struct window *window)
 {
 	window->wl_surface = wl_compositor_create_surface(compositor);
@@ -397,6 +420,7 @@ void window_create(struct window *window)
 	window->xdg_surface = xdg_wm_base_get_xdg_surface(wm_base, window->wl_surface);
 	xdg_surface_add_listener(window->xdg_surface, &xdg_surface_listener, window);
 	window->toplevel = xdg_surface_get_toplevel(window->xdg_surface);
+	xdg_toplevel_add_listener(window->toplevel, &toplevel_listener, window);
 	xdg_toplevel_set_title(window->toplevel, window->title);
 
 	assert(window->render);
