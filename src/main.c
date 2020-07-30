@@ -71,7 +71,7 @@ int main(int argc, char *argv[])
 		.border = 10,
 	};
 	window_create(&window);
-	window_dispatch();
+	window_dispatch(&window);
 
 	// TODO window_destroy();
 

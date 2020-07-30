@@ -27,6 +27,7 @@ struct window {
 
 	bool                	pending_configure;
 	bool                	pending_resize;
+	bool                	close;
 };
 
 /** Интерфейс для отрисовки окна */
@@ -49,4 +50,4 @@ void wayland_stop(void);
 /** Создаёт окно и связанные объекты */
 void window_create(struct window *window);
 
-void window_dispatch(void);
+void window_dispatch(struct window *window);

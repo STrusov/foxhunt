@@ -467,6 +467,7 @@ static void on_toplevel_close(void *p, struct xdg_toplevel *toplevel)
 {
 	struct window *window = p;
 	printf("Закрытие.\n");
+	window->close = true;
 }
 
 const static struct xdg_toplevel_listener toplevel_listener = {
@@ -498,9 +499,11 @@ void window_create(struct window *window)
 	wl_surface_commit(window->wl_surface);
 }
 
-void window_dispatch(void)
+void window_dispatch(struct window *window)
 {
 	while (wl_display_dispatch(display) != -1) {
+		if (window->close)
+			break;
 	}
 }
 
