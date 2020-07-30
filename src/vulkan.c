@@ -98,15 +98,17 @@ struct vk_context {
 
 	/** Последовательность кадров, отображаемых по очереди.   */
 	VkSwapchainKHR  	swapchain;
+	/** Устаревшая последовательность, ждущая удаления.       */
+	VkSwapchainKHR  	old_swapchain;
 	/** Размер кадра.                                         */
 	VkExtent2D      	extent;
 	/** Формат элементов изображения.                         */
 	VkFormat        	format;
-	/** Количество кадров в последовательности.               */
+	/** Количество кадров в последовательности И номер резервного */
 	uint32_t        	count;
 	/** Индекс текущего кадра.                                */
 	uint32_t        	active;
-	/** Последовательность кадров.                            */
+	/** Последовательность кадров + 1 резерв для old_swapchain.   */
 	struct vk_frame 	*frame;
 
 	/** Набор семафоров для \see vk_acquire_frame().          */
@@ -283,6 +285,8 @@ static VkResult create_swapchain(struct vk_context *vk, uint32_t width, uint32_t
 		vk->extent.height = surfcaps.currentExtent.height;
 	}
 	const bool excl = vk->qi[vk_graphics] == vk->qi[vk_presentation];
+	assert(!vk->old_swapchain);
+	vk->old_swapchain = vk->swapchain;
 	const VkSwapchainCreateInfoKHR swch = {
 		.sType                	= VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
 		.surface              	= vk->surface,
@@ -299,29 +303,69 @@ static VkResult create_swapchain(struct vk_context *vk, uint32_t width, uint32_t
 		.compositeAlpha       	= VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
 		.presentMode          	= VK_PRESENT_MODE_FIFO_KHR,
 		.clipped              	= VK_TRUE,
-		.oldSwapchain         	= VK_NULL_HANDLE,
+		.oldSwapchain         	= vk->old_swapchain,
 	};
 	r = vkCreateSwapchainKHR(vk->device, &swch, allocator, &vk->swapchain);
 	if (r == VK_SUCCESS) {
+		uint32_t old_count = vk->count;
+		// Хорошо бы исключить лишний вызов при old_swapchain, но валидатор:
+		// UNASSIGNED-CoreValidation-SwapchainInvalidCount(ERROR / SPEC): msgNum: 442632974 - Validation Error: [ UNASSIGNED-CoreValidation-SwapchainInvalidCount ] Object 0: handle = 0x56272ef7a440, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x1a620b0e | vkGetSwapchainImagesKHR() called with non-NULL pSwapchainImages, and with pSwapchainImageCount set to a value (4) that is greater than the value (0) that was returned when pSwapchainImages was NULL.
 		vkGetSwapchainImagesKHR(vk->device, vk->swapchain, &vk->count, NULL);
+		assert(old_count == vk->count || !vk->old_swapchain);
 		printf(" Подготавливается формирователь видеоряда %ux%ux%u:\n",
 		        swch.imageExtent.width, swch.imageExtent.height, vk->count);
 		VkImage *images = calloc(vk->count, sizeof(*images));
 		vkGetSwapchainImagesKHR(vk->device, vk->swapchain, &vk->count, images);
-		vk->frame = calloc(vk->count, sizeof(*vk->frame));
-		vk->acq_pool = calloc(vk->count, sizeof(*vk->acq_pool));
+		if (!vk->old_swapchain) {
+			vk->frame = calloc(1 + vk->count, sizeof(*vk->frame));
+			vk->acq_pool = calloc(vk->count, sizeof(*vk->acq_pool));
+		}
 		if (!images || !vk->frame || !vk->acq_pool)
 			r = VK_ERROR_OUT_OF_HOST_MEMORY;
 		else {
 			for (int i = 0; i < vk->count; ++i) {
 				vk->frame[i].img = images[i];
-				r = vkCreateSemaphore(vk->device, &ssci, allocator, &vk->acq_pool[i]);
-				if (r != VK_SUCCESS)
-					break;
+				if (!vk->old_swapchain) {
+					r = vkCreateSemaphore(vk->device, &ssci, allocator, &vk->acq_pool[i]);
+					if (r != VK_SUCCESS)
+						break;
+				}
 			}
-			printf("  Созданы семафоры захвата кадров (%u).\n", vk->count);
+			if (!vk->old_swapchain)
+				printf("  Созданы семафоры захвата кадров (%u).\n", vk->count);
 		}
 		free(images);
+	}
+	// Описатели активного кадра старого видеоряда копируем в резервную позицию
+	// для отложенного удаления после освобождения буфера команд
+	// \see vk_begin_render_cmd(), остальные освобождаем сразу.
+	if (vk->old_swapchain) {
+		// Проверим занятость буфера команд по VK_TIMEOUT
+		// TODO без этой команды валидатор рапортует о занятости ДРУГОГО буфера.
+		VkResult busy = vkWaitForFences(vk->device, 1, &vk->frame[vk->active].pending, VK_TRUE, 0);
+		if (busy) {
+			vk->frame[vk->count].cmd     = vk->frame[vk->active].cmd;
+			vk->frame[vk->count].fb      = vk->frame[vk->active].fb;
+			vk->frame[vk->count].view    = vk->frame[vk->active].view;
+			vk->frame[vk->count].pending = vk->frame[vk->active].pending;
+		}
+		for (int i = vk->count - 1; i >= 0; --i) {
+			if (!busy || i != vk->active) {
+				if (vk->frame[i].cmd)
+					vkFreeCommandBuffers(vk->device, vk->command_pool, 1, &vk->frame[i].cmd);
+				if (vk->frame[i].fb)
+					vkDestroyFramebuffer(vk->device, vk->frame[i].fb, allocator);
+				if (vk->frame[i].view)
+					vkDestroyImageView(vk->device, vk->frame[i].view, allocator);
+			}
+			vk->frame[i].cmd  = VK_NULL_HANDLE;
+			vk->frame[i].fb   = VK_NULL_HANDLE;
+			vk->frame[i].view = VK_NULL_HANDLE;
+		}
+		if (!busy) {
+			vkDestroySwapchainKHR(vk->device, vk->old_swapchain, allocator);
+			vk->old_swapchain = VK_NULL_HANDLE;
+		}
 	}
 	free(formats);
 	return r;
@@ -719,6 +763,18 @@ VkResult vk_acquire_frame(struct vk_context *vk)
 
 VkResult vk_begin_render_cmd(struct vk_context *vk)
 {
+	if (vk->old_swapchain) {
+		assert(vk->frame[vk->count].pending);
+		assert(vk->frame[vk->count].cmd);
+		assert(vk->frame[vk->count].fb);
+		assert(vk->frame[vk->count].view);
+		vkWaitForFences(vk->device, 1, &vk->frame[vk->count].pending, VK_TRUE, UINT64_MAX);
+		vkFreeCommandBuffers(vk->device, vk->command_pool, 1, &vk->frame[vk->count].cmd);
+		vkDestroyFramebuffer(vk->device, vk->frame[vk->count].fb, allocator);
+		vkDestroyImageView(vk->device, vk->frame[vk->count].view, allocator);
+		vkDestroySwapchainKHR(vk->device, vk->old_swapchain, allocator);
+		vk->old_swapchain = VK_NULL_HANDLE;
+	}
 	// TODO
 	// Без синхронизации по vkQueueWaitIdle() или параметру fence vkQueueSubmit()
 	// валидатор рапортует, что буфер команд занят. https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#VUID-vkQueueSubmit-pCommandBuffers-00071
@@ -841,7 +897,13 @@ void vk_window_destroy(void *vk_context)
 void vk_window_resize(void *p, uint32_t width, uint32_t height)
 {
 	struct vk_context *vk = p;
-	create_swapchain(vk, width, height);
+	if (!vk->old_swapchain) {
+		create_swapchain(vk, width, height);
+
+		vkDestroyPipeline(vk->device, vk->graphics_pipeline, allocator);
+		vkDestroyPipelineLayout(vk->device, vk->pipeline_layout, allocator);
+		create_pipeline(vk);
+	}
 }
 
 void vk_window_create(struct wl_display *display, struct wl_surface *surface,
