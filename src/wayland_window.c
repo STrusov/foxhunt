@@ -507,3 +507,12 @@ void window_dispatch(struct window *window)
 	}
 }
 
+void window_destroy(struct window *window)
+{
+	if (window->render->destroy)
+		window->render->destroy(window->render_ctx);
+
+	xdg_toplevel_destroy(window->toplevel);
+	xdg_surface_destroy(window->xdg_surface);
+	wl_surface_destroy(window->wl_surface);
+}

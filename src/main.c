@@ -16,6 +16,8 @@
  *
  */
 
+#include <stdio.h>
+
 #include "vulkan.h"
 #include "wayland_window.h"
 
@@ -51,6 +53,7 @@ static bool draw_frame(void *p)
 
 static const struct render vulkan = {
 	.create    	= vk_window_create,
+	.destroy   	= vk_window_destroy,
 	.draw_frame	= draw_frame,
 	.resize    	= vk_window_resize,
 };
@@ -73,11 +76,12 @@ int main(int argc, char *argv[])
 	window_create(&window);
 	window_dispatch(&window);
 
-	// TODO window_destroy();
+	window_destroy(&window);
 
 	vk_stop();
 	wayland_stop();
 
+	printf("Выход.\n");
 	return 0;
 }
 

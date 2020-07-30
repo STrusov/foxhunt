@@ -21,7 +21,7 @@ struct vk_context;
 void vk_window_create(struct wl_display *, struct wl_surface *,
                       uint32_t width, uint32_t height, void **object);
 
-void vk_window_destroy(struct vk_context*);
+void vk_window_destroy(void *vk_context);
 
 void vk_window_resize(void *vk_context, uint32_t width, uint32_t height);
 

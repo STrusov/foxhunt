@@ -35,6 +35,8 @@ struct render {
 	/** Конструктор              */
 	void (*create)(struct wl_display *, struct wl_surface *, uint32_t width,
 	               uint32_t height, void **render_ctx);
+	/** Деструктор               */
+	void (*destroy)(void *render_ctx);
 	/** Вызывается, когда композитор готов отобразить новый кадр.*/
 	bool (*draw_frame)(void *render_ctx);
 	/** Изменяет размер окна.    */
@@ -49,5 +51,8 @@ void wayland_stop(void);
 
 /** Создаёт окно и связанные объекты */
 void window_create(struct window *window);
+
+/** Удаляет окно и связанные объекты */
+void window_destroy(struct window *window);
 
 void window_dispatch(struct window *window);

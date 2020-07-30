@@ -808,10 +808,12 @@ VkResult vk_present_frame(struct vk_context *vk)
 }
 
 /** Удаляет оконную поверхность и связанные структуры. */
-void vk_window_destroy(struct vk_context *vk)
+void vk_window_destroy(void *vk_context)
 {
+	struct vk_context *vk = vk_context;
 	vkDeviceWaitIdle(vk->device);
 	do {
+		--vk->count;
 		vkDestroySemaphore(vk->device, vk->acq_pool[vk->count], allocator);
 		// Из-за ленивой инициализации часть может быть пуста.
 		vkDestroySemaphore(vk->device, vk->frame[vk->count].rendered, allocator);
@@ -821,7 +823,7 @@ void vk_window_destroy(struct vk_context *vk)
 		vkDestroyImageView(vk->device, vk->frame[vk->count].view, allocator);
 		vkFreeMemory(vk->device, vk->frame[vk->count].vert_mem, allocator);
 		vkDestroyBuffer(vk->device, vk->frame[vk->count].vert_buf, allocator);
-	} while (vk->count--);
+	} while (vk->count);
 	free(vk->acq_pool);
 	free(vk->frame);
 
