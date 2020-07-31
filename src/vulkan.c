@@ -103,7 +103,10 @@ struct vk_context {
 	/** Размер кадра.                                         */
 	VkExtent2D      	extent;
 	/** Формат элементов изображения.                         */
-	VkFormat        	format;
+	VkSurfaceFormatKHR	format;
+
+	VkSurfaceTransformFlagBitsKHR	transform;
+	uint32_t        	min_count;
 	/** Количество кадров в последовательности И номер резервного */
 	uint32_t        	count;
 	/** Индекс текущего кадра.                                */
@@ -252,13 +255,15 @@ static const struct VkSemaphoreCreateInfo ssci = {
 	.sType	= VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
 };
 
-/** Подготавливает описатель видеоряда. */
-static VkResult create_swapchain(struct vk_context *vk, uint32_t width, uint32_t height)
+static VkResult surface_characteristics(struct vk_context *vk)
 {
 	VkSurfaceCapabilitiesKHR	surfcaps;
 	VkResult r = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vk->gpu, vk->surface, &surfcaps);
 	if (r != VK_SUCCESS)
 		return r;
+	assert(surfcaps.currentExtent.width == 0xFFFFFFFF);
+	vk->transform = surfcaps.currentTransform;
+	vk->min_count = surfcaps.minImageCount;  // TODO +1?
 	printf(" Допустимое количество кадров последовательности: %u..%u\n",
 	         surfcaps.minImageCount,
 	         surfcaps.maxImageCount ? surfcaps.maxImageCount : (uint32_t)-1);
@@ -280,30 +285,38 @@ static VkResult create_swapchain(struct vk_context *vk, uint32_t width, uint32_t
 			break;
 		}
 	}
-	vk->format = formats[chosen_format].format;
-	if (surfcaps.currentExtent.width == 0xFFFFFFFF) {
-		vk->extent.width  = width;
-		vk->extent.height = height;
-	} else {
-		vk->extent.width  = surfcaps.currentExtent.width;
-		vk->extent.height = surfcaps.currentExtent.height;
+	vk->format = formats[chosen_format];
+	free(formats);
+	return r;
+}
+
+/** Подготавливает описатель видеоряда. */
+static VkResult create_swapchain(struct vk_context *vk, uint32_t width, uint32_t height)
+{
+	VkResult r;
+	if (!vk->min_count) {
+		r = surface_characteristics(vk);
+		if (r != VK_SUCCESS)
+			return r;
 	}
+	vk->extent.width  = width;
+	vk->extent.height = height;
 	const bool excl = vk->qi[vk_graphics] == vk->qi[vk_presentation];
 	assert(!vk->old_swapchain);
 	vk->old_swapchain = vk->swapchain;
 	const VkSwapchainCreateInfoKHR swch = {
 		.sType                	= VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
 		.surface              	= vk->surface,
-		.minImageCount        	= surfcaps.minImageCount, // TODO +1?
-		.imageFormat          	= vk->format,
-		.imageColorSpace      	= formats[chosen_format].colorSpace,
+		.minImageCount        	= vk->min_count,
+		.imageFormat          	= vk->format.format,
+		.imageColorSpace      	= vk->format.colorSpace,
 		.imageExtent          	= vk->extent,
 		.imageArrayLayers     	= 1,
 		.imageUsage           	= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
 		.imageSharingMode     	= excl ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT,
 		.queueFamilyIndexCount	= excl ? 0 : vk_num_queues,
 		.pQueueFamilyIndices  	= &vk->qi[vk_first_queue],
-		.preTransform         	= surfcaps.currentTransform,
+		.preTransform         	= vk->transform,
 		.compositeAlpha       	= VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
 		.presentMode          	= VK_PRESENT_MODE_FIFO_KHR,
 		.clipped              	= VK_TRUE,
@@ -371,14 +384,13 @@ static VkResult create_swapchain(struct vk_context *vk, uint32_t width, uint32_t
 			vk->old_swapchain = VK_NULL_HANDLE;
 		}
 	}
-	free(formats);
 	return r;
 }
 
 static VkResult create_render(struct vk_context *vk)
 {
 	const struct VkAttachmentDescription color_attachment = {
-		.format        	= vk->format,
+		.format        	= vk->format.format,
 		.samples       	= VK_SAMPLE_COUNT_1_BIT,
 		.loadOp        	= VK_ATTACHMENT_LOAD_OP_CLEAR,
 		.storeOp       	= VK_ATTACHMENT_STORE_OP_STORE,
@@ -724,7 +736,7 @@ VkResult vk_acquire_frame(struct vk_context *vk)
 				.sType          	= VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
 				.image          	= vk->frame[vk->active].img,
 				.viewType       	= VK_IMAGE_VIEW_TYPE_2D,
-				.format         	= vk->format,
+				.format         	= vk->format.format,
 				.components     	= {
 					.r	= VK_COMPONENT_SWIZZLE_IDENTITY,
 					.g	= VK_COMPONENT_SWIZZLE_IDENTITY,
