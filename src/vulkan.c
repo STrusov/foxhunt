@@ -121,9 +121,13 @@ struct vk_context {
 	/** Хранилище команд для графического процессора          */
 	VkCommandPool   	command_pool;
 
-	/** Графический конвейер                                  */
+	/** Модули ретушёров                                      */
+	VkShaderModule  	shader[2];
+	/** Графические конвейеры                                 */
 	VkPipeline      	graphics_pipeline;
-	/** и описатель его топологии                             */
+	VkPipeline      	base_pipeline;
+	VkPipeline      	old_pipeline;
+	/** и описатель их топологии                              */
 	VkPipelineLayout	pipeline_layout;
 };
 
@@ -445,7 +449,7 @@ static const uint8_t shader_frag_spv[] = {
 #include "shader.frag.spv.inl"
 };
 
-static VkResult create_pipeline(struct vk_context *vk)
+static VkResult create_shaders(struct vk_context *vk)
 {
 	static const char *shader_name[] = { "вершин", "фрагментов" };
 	static const struct VkShaderModuleCreateInfo shader_mods[] = {
@@ -459,28 +463,33 @@ static VkResult create_pipeline(struct vk_context *vk)
 			.pCode   	= (const uint32_t*)shader_frag_spv,
 		},
 	};
-	struct VkPipelineShaderStageCreateInfo shader_stages[] = {
+	static_assert(sizeof(shader_mods)/sizeof(*shader_mods) == sizeof(vk->shader)/sizeof(*vk->shader));
+	VkResult r;
+	for (int i = 0; i < sizeof(shader_mods)/sizeof(*shader_mods); ++i) {
+		r = vkCreateShaderModule(vk->device, &shader_mods[i], allocator, &vk->shader[i]);
+		if (r == VK_SUCCESS)
+			printf("  Создан модуль ретушёра %s (%lu байт).\n", shader_name[i], shader_mods[i].codeSize);
+	}
+	return r;
+}
+
+/** Создаёт конвейер. При повторных вызовах использует предыдущий в качестве базы. */
+static VkResult create_pipeline(struct vk_context *vk)
+{
+	const struct VkPipelineShaderStageCreateInfo shader_stages[] = {
 		{
 			.sType 	= VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 			.stage 	= VK_SHADER_STAGE_VERTEX_BIT,
-			.module	= VK_NULL_HANDLE,
+			.module	= vk->shader[0],
 			.pName 	= "main",
 		},{
 			.sType 	= VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 			.stage 	= VK_SHADER_STAGE_FRAGMENT_BIT,
-			.module	= VK_NULL_HANDLE,
+			.module	= vk->shader[1],
 			.pName 	= "main",
 		},
 	};
-	static_assert(sizeof(shader_mods)/sizeof(*shader_mods) == sizeof(shader_stages)/sizeof(*shader_stages));
-	VkResult r;
-	for (int i = 0; i < sizeof(shader_mods)/sizeof(*shader_mods); ++i) {
-		r = vkCreateShaderModule(vk->device, &shader_mods[i], allocator, &shader_stages[i].module);
-		if (r != VK_SUCCESS)
-			goto exit_with_cleanup;
-		printf("  Создан модуль ретушёра %s (%lu байт).\n", shader_name[i], shader_mods[i].codeSize);
-	}
-
+	static_assert(sizeof(shader_stages)/sizeof(*shader_stages) == sizeof(vk->shader)/sizeof(*vk->shader));
 	static const struct VkVertexInputBindingDescription vertex_binding = {
 		.binding  	= 0,
 		.stride   	= sizeof(struct vertex2d),
@@ -582,11 +591,24 @@ static VkResult create_pipeline(struct vk_context *vk)
 		.pushConstantRangeCount	= 0,
 		.pPushConstantRanges   	= NULL,
 	};
-	r = vkCreatePipelineLayout(vk->device, &pipelinelayoutinfo, allocator, &vk->pipeline_layout);
+	VkResult r = VK_SUCCESS;
+	if (!vk->pipeline_layout) {
+		r = vkCreatePipelineLayout(vk->device, &pipelinelayoutinfo, allocator, &vk->pipeline_layout);
+		if (r == VK_SUCCESS)
+			printf("  Создана топология конвейера.\n");
+	}
 	if (r == VK_SUCCESS) {
-		printf("  Создана топология конвейера.\n");
+		if (vk->old_pipeline)
+			vkDestroyPipeline(vk->device, vk->old_pipeline, allocator);
+		// При новом вызове используем предыдущий конвейер в качестве базового.
+		// Старый базовый откладываем для освобождения в vk_begin_render_cmd().
+		vk->old_pipeline  = vk->base_pipeline;
+		vk->base_pipeline = vk->graphics_pipeline;
+		const bool first = !vk->graphics_pipeline;
 		const struct VkGraphicsPipelineCreateInfo pipelineinfo = {
 			.sType              	= VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+			.flags              	= VK_PIPELINE_CREATE_ALLOW_DERIVATIVES_BIT
+			                    	| first ? 0 : VK_PIPELINE_CREATE_DERIVATIVE_BIT,
 			.stageCount         	= sizeof(shader_stages)/sizeof(*shader_stages),
 			.pStages            	= shader_stages,
 			.pVertexInputState  	= &vertexinput_state,
@@ -601,18 +623,21 @@ static VkResult create_pipeline(struct vk_context *vk)
 			.layout             	= vk->pipeline_layout,
 			.renderPass         	= vk->render_pass,
 			.subpass            	= 0,
-			.basePipelineHandle 	= VK_NULL_HANDLE,
-			.basePipelineIndex  	= 0,
+			.basePipelineHandle 	= vk->base_pipeline,
+			.basePipelineIndex  	= -1,
 		};
 		r = vkCreateGraphicsPipelines(vk->device, VK_NULL_HANDLE, 1, &pipelineinfo,
 		                              allocator, &vk->graphics_pipeline);
 		if (r == VK_SUCCESS)
-			printf("  Создан конвейер.\n");
+			printf("  Создан %s.\n", first ? "базовый конвейер" : "конвейер растеризации");
 	}
-exit_with_cleanup:
-	for (int i = sizeof(shader_mods)/sizeof(*shader_mods)-1; i >= 0; --i)
-		vkDestroyShaderModule(vk->device, shader_stages[i].module, allocator);
 	return r;
+}
+
+static void destroy_shaders(struct vk_context *vk)
+{
+	for (int i = sizeof(vk->shader)/sizeof(*vk->shader)-1; i >= 0; --i)
+		vkDestroyShaderModule(vk->device, vk->shader[i], allocator);
 }
 
 
@@ -775,6 +800,10 @@ VkResult vk_begin_render_cmd(struct vk_context *vk)
 		vkDestroySwapchainKHR(vk->device, vk->old_swapchain, allocator);
 		vk->old_swapchain = VK_NULL_HANDLE;
 	}
+	if (vk->old_pipeline) {
+		vkDestroyPipeline(vk->device, vk->old_pipeline, allocator);
+		vk->old_pipeline = VK_NULL_HANDLE;
+	}
 	// TODO
 	// Без синхронизации по vkQueueWaitIdle() или параметру fence vkQueueSubmit()
 	// валидатор рапортует, что буфер команд занят. https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#VUID-vkQueueSubmit-pCommandBuffers-00071
@@ -883,8 +912,11 @@ void vk_window_destroy(void *vk_context)
 	free(vk->acq_pool);
 	free(vk->frame);
 
+	destroy_shaders(vk);
 	vkDestroyCommandPool(vk->device, vk->command_pool, allocator);
 	vkDestroyPipeline(vk->device, vk->graphics_pipeline, allocator);
+	vkDestroyPipeline(vk->device, vk->base_pipeline, allocator);
+	vkDestroyPipeline(vk->device, vk->old_pipeline, allocator);
 	vkDestroyPipelineLayout(vk->device, vk->pipeline_layout, allocator);
 	vkDestroyRenderPass(vk->device, vk->render_pass, allocator);
 	vkDestroySwapchainKHR(vk->device, vk->swapchain, allocator);
@@ -899,9 +931,6 @@ void vk_window_resize(void *p, uint32_t width, uint32_t height)
 	struct vk_context *vk = p;
 	if (!vk->old_swapchain) {
 		create_swapchain(vk, width, height);
-
-		vkDestroyPipeline(vk->device, vk->graphics_pipeline, allocator);
-		vkDestroyPipelineLayout(vk->device, vk->pipeline_layout, allocator);
 		create_pipeline(vk);
 	}
 }
@@ -919,6 +948,7 @@ void vk_window_create(struct wl_display *display, struct wl_surface *surface,
 
 		create_swapchain(vk, width, height);
 		create_render(vk);
+		create_shaders(vk);
 		create_pipeline(vk);
 		create_command_pool(vk);
 
