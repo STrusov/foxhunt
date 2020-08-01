@@ -452,13 +452,35 @@ static void on_toplevel_configure(void *p, struct xdg_toplevel *toplevel,
 	if (!width || !height) {
 		window->pending_configure = true;
 	} else {
-		if (window->width != width && width >= 2 * window->border) {
-			window->width  = width;
-			window->pending_resize = true;
-		}
-		if (window->height != height && height >= 2 * window->border) {
-			window->height = height;
-			window->pending_resize = true;
+		// Если требуется сохранить соотношение сторон:
+		// вычисляем размер неподвижной стороны из изменяющейся;
+		// при изменении сразу 2-х сторон вычисляем некое среднее,
+		// поскольку в данном случае пользователь может один размер
+		// уменьшать, а второй увеличивать — и не ясно, что он хочет.
+		if (window->aspect_ratio) {
+			if (window->width != width && window->height != height) {
+				int w1 = height * window->aspect_ratio;
+				height = (height + width / window->aspect_ratio) / 2;
+				width  = (width + w1) / 2;
+			} else if (window->width  != width) {
+				height = width / window->aspect_ratio;
+			} else if (window->height != height) {
+				width = height * window->aspect_ratio;
+			}
+			if (height >= 2 * window->border && width >= 2 * window->border) {
+				window->height = height;
+				window->width  = width;
+				window->pending_resize = true;
+			}
+		} else {
+			if (window->width != width && width >= 2 * window->border) {
+				window->width  = width;
+				window->pending_resize = true;
+			}
+			if (window->height != height && height >= 2 * window->border) {
+				window->height = height;
+				window->pending_resize = true;
+			}
 		}
 	}
 }
@@ -478,6 +500,15 @@ const static struct xdg_toplevel_listener toplevel_listener = {
 
 void window_create(struct window *window)
 {
+	assert(!window->height || !window->width || !window->aspect_ratio || window->width == window->aspect_ratio * window->height);
+
+	if (window->constant_aspect_ratio)
+		window->aspect_ratio = window->width / (double)window->height;
+	if (!window->height && window->aspect_ratio)
+		window->height = window->width / window->aspect_ratio;
+	if (!window->width && window->aspect_ratio)
+		window->width = window->height * window->aspect_ratio;
+
 	assert(2 * window->border <= window->width);
 	assert(2 * window->border <= window->height);
 

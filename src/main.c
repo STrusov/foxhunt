@@ -72,6 +72,8 @@ int main(int argc, char *argv[])
 		.width	= 640,
 		.height	= 640,
 		.border = 10,
+		.aspect_ratio = 1,
+//		.constant_aspect_ratio = true,
 	};
 	window_create(&window);
 	window_dispatch(&window);
