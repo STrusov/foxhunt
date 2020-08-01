@@ -808,6 +808,10 @@ VkResult vk_begin_render_cmd(struct vk_context *vk)
 		vkDestroyFramebuffer(vk->device, vk->frame[vk->count].fb, allocator);
 		vkDestroyImageView(vk->device, vk->frame[vk->count].view, allocator);
 		vkDestroySwapchainKHR(vk->device, vk->old_swapchain, allocator);
+		vk->frame[vk->count].pending = VK_NULL_HANDLE;
+		vk->frame[vk->count].cmd  = VK_NULL_HANDLE;
+		vk->frame[vk->count].fb   = VK_NULL_HANDLE;
+		vk->frame[vk->count].view = VK_NULL_HANDLE;
 		vk->old_swapchain = VK_NULL_HANDLE;
 	}
 	if (vk->old_pipeline) {
@@ -907,8 +911,9 @@ void vk_window_destroy(void *vk_context)
 {
 	struct vk_context *vk = vk_context;
 	vkDeviceWaitIdle(vk->device);
+	// Обрабатываем так же и резервный элемент массива,
+	// где могут остаться отложенные для удаления описатели.
 	do {
-		--vk->count;
 		vkDestroySemaphore(vk->device, vk->acq_pool[vk->count], allocator);
 		// Из-за ленивой инициализации часть может быть пуста.
 		vkDestroySemaphore(vk->device, vk->frame[vk->count].rendered, allocator);
@@ -918,7 +923,7 @@ void vk_window_destroy(void *vk_context)
 		vkDestroyImageView(vk->device, vk->frame[vk->count].view, allocator);
 		vkFreeMemory(vk->device, vk->frame[vk->count].vert_mem, allocator);
 		vkDestroyBuffer(vk->device, vk->frame[vk->count].vert_buf, allocator);
-	} while (vk->count);
+	} while (vk->count--);
 	free(vk->acq_pool);
 	free(vk->frame);
 
@@ -930,6 +935,7 @@ void vk_window_destroy(void *vk_context)
 	vkDestroyPipelineLayout(vk->device, vk->pipeline_layout, allocator);
 	vkDestroyRenderPass(vk->device, vk->render_pass, allocator);
 	vkDestroySwapchainKHR(vk->device, vk->swapchain, allocator);
+	vkDestroySwapchainKHR(vk->device, vk->old_swapchain, allocator);
 
 	vkDestroyDevice(vk->device, allocator);
 	vkDestroySurfaceKHR(instance, vk->surface, allocator);
