@@ -610,8 +610,6 @@ static VkResult create_pipeline(struct vk_context *vk)
 			printf("  Создана топология конвейера.\n");
 	}
 	if (r == VK_SUCCESS) {
-		if (vk->old_pipeline)
-			vkDestroyPipeline(vk->device, vk->old_pipeline, allocator);
 		// При новом вызове используем предыдущий конвейер в качестве базового.
 		// Старый базовый откладываем для освобождения в vk_begin_render_cmd().
 		vk->old_pipeline  = vk->base_pipeline;
@@ -941,7 +939,7 @@ void vk_window_destroy(void *vk_context)
 void vk_window_resize(void *p, uint32_t width, uint32_t height)
 {
 	struct vk_context *vk = p;
-	if (!vk->old_swapchain) {
+	if (!vk->old_swapchain && !vk->old_pipeline) {
 		create_swapchain(vk, width, height);
 		create_pipeline(vk);
 	}
