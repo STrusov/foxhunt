@@ -4,6 +4,7 @@ PREFIX  ?= /usr/local
 HEADERS := $(wildcard src/*.h)
 SOURCES := $(wildcard src/*.c)
 SHADERS := src/shader.frag src/shader.vert
+LIBS    := vulkan wayland-client
 CFLAGS  := -std=c18 -Wall
 LDFLAGS := -lm
 CC ?= cc
@@ -25,13 +26,13 @@ WLHEADERS  := $(addprefix $(WLPROTODIR)/,$(WLPROTOS:=-client-protocol.h))
 WLSOURCES  := $(addprefix $(WLPROTODIR)/,$(WLPROTOS:=-protocol.c))
 WLPROTOXML != pkg-config wayland-protocols --variable=pkgdatadir
 WLSCANNER  != pkg-config wayland-scanner --variable=wayland_scanner
-WLCFLAGS   != pkg-config vulkan wayland-client --cflags
-WLLDFLAGS  != pkg-config vulkan wayland-client --libs
+LIBSCFLAGS   != pkg-config $(LIBS) --cflags
+LIBSLDFLAGS  != pkg-config $(LIBS) --libs
 
 HEADERS += $(WLHEADERS)
 SOURCES += $(WLSOURCES)
-CFLAGS  += $(WLCFLAGS)
-LDFLAGS += $(WLLDFLAGS)
+CFLAGS  += $(LIBSCFLAGS)
+LDFLAGS += $(LIBSLDFLAGS)
 OBJECTS := $(SOURCES:.c=.o)
 
 SPIRVS  := $(addsuffix .spv,$(SHADERS))
