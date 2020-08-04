@@ -18,6 +18,7 @@
 
 #include <stdio.h>
 
+#include "ay_music.h"
 #include "vulkan.h"
 #include "wayland_window.h"
 
@@ -60,6 +61,10 @@ static const struct render vulkan = {
 
 int main(int argc, char *argv[])
 {
+	ay_music_init();
+
+	ay_music_play();
+
 	if (!wayland_init())
 		return 1;
 

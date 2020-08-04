@@ -4,7 +4,8 @@ PREFIX  ?= /usr/local
 HEADERS := $(wildcard src/*.h)
 SOURCES := $(wildcard src/*.c)
 SHADERS := src/shader.frag src/shader.vert
-LIBS    := vulkan wayland-client
+MUSICS  := $(wildcard music/*.cps)
+LIBS    := alsa vulkan wayland-client
 CFLAGS  := -std=c18 -Wall
 LDFLAGS := -lm
 CC ?= cc
@@ -38,6 +39,8 @@ OBJECTS := $(SOURCES:.c=.o)
 SPIRVS  := $(addsuffix .spv,$(SHADERS))
 SPVINLS := $(addsuffix .inl,$(SPIRVS))
 
+MUSICINLS := $(addsuffix .inl,$(MUSICS))
+
 .PHONY: all clean install uninstall
 
 all: $(TARGET)
@@ -45,7 +48,7 @@ all: $(TARGET)
 $(TARGET): $(OBJECTS)
 	$(CC) -o $@ $(OBJECTS) $(SPVOBJS) $(LDFLAGS)
 
-$(OBJECTS): %.o: %.c $(HEADERS) $(SPVINLS)
+$(OBJECTS): %.o: %.c $(HEADERS) $(SPVINLS) $(MUSICINLS)
 	$(CC) -c $< -o $@ -I$(WLPROTODIR) $(CFLAGS)
 
 $(SPVINLS): %.inl: %
@@ -53,6 +56,9 @@ $(SPVINLS): %.inl: %
 
 $(SPIRVS): %.spv: %
 	$(GLC) -c $< -o $@ $(GLCFLAGS)
+
+$(MUSICINLS): %.inl: %
+	$(BIN2TXT) $< > $@
 
 # Функция всего лишь удаляет суффикс -unstable-v с цифрой из имени файла.
 unvers = $(strip $(foreach v,1 2 3 4 5 6 7 8 9,\
@@ -69,7 +75,7 @@ $(WLPROTODIR):
 	mkdir $(WLPROTODIR)
 
 clean:
-	$(RM) $(TARGET) $(OBJECTS) $(SPVINLS) $(SPIRVS) -r $(WLPROTODIR)
+	$(RM) $(TARGET) $(OBJECTS) $(SPVINLS) $(SPIRVS) $(MUSICINLS) -r $(WLPROTODIR)
 
 install:
 	install $(TARGET) $(PREFIX)/bin
