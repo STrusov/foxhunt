@@ -7,7 +7,7 @@ SHADERS := src/shader.frag src/shader.vert
 MUSICS  := $(wildcard music/*.cps)
 LIBS    := alsa vulkan wayland-client
 CFLAGS  := -std=c18 -Wall
-LDFLAGS := -lm
+LDFLAGS := -lm -pthread
 CC ?= cc
 #GLCFLAGS :=
 GLC ?= glslangValidator -V

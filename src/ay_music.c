@@ -15,7 +15,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
-#include <unistd.h>
+#include <threads.h>
 #include <alsa/asoundlib.h>
 
 enum {
@@ -220,6 +220,10 @@ bool pcm_play_chunk(lr32 *buff, snd_pcm_uframes_t size)
 	return true;
 }
 
+
+thrd_t player;
+bool   exit_player;
+
 int ay_music_init(void)
 {
 	ay_init();
@@ -233,8 +237,17 @@ int ay_music_init(void)
 
 void ay_music_stop(void)
 {
+	exit_player = true;
+	thrd_join(player, NULL);
 	free(chunk);
 	pcm_stop();
+}
+
+int music_thread(void*);
+
+void ay_music_play(void)
+{
+	thrd_create(&player, music_thread, NULL);
 }
 
 const uint8_t music[] = {
@@ -306,7 +319,7 @@ struct channel {
 	uint8_t      	tone_disp;
 };
 
-void ay_music_play(void)
+int music_thread(void *p)
 {
 	static const uint16_t base_frequency[12] = {
 		0xEF8, 0xE10, 0xD60, 0xC80, 0xBD8, 0xB28,
@@ -462,6 +475,8 @@ play_music:
 					channel[cn].orn_line = (channel[cn].orn_line + 1) & 0xff;
 				}
 			} // каналы
+			if (exit_player)
+				return 0;
 			ay_make_chunk();
 			pcm_play_chunk(chunk, chunk_size);
 		} // for (i < delay)

@@ -62,7 +62,6 @@ static const struct render vulkan = {
 int main(int argc, char *argv[])
 {
 	ay_music_init();
-
 	ay_music_play();
 
 	if (!wayland_init())
@@ -87,6 +86,7 @@ int main(int argc, char *argv[])
 
 	vk_stop();
 	wayland_stop();
+	ay_music_stop();
 
 	printf("Выход.\n");
 	return 0;
