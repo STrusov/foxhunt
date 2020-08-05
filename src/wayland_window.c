@@ -467,7 +467,8 @@ static void on_toplevel_configure(void *p, struct xdg_toplevel *toplevel,
 			} else if (window->height != height) {
 				width = height * window->aspect_ratio;
 			}
-			if (height >= 2 * window->border && width >= 2 * window->border) {
+			if ((window->height != height || window->width != width)
+			  && height >= 2 * window->border && width >= 2 * window->border) {
 				window->height = height;
 				window->width  = width;
 				window->pending_resize = true;
