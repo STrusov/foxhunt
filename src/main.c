@@ -26,6 +26,8 @@ const float PI = 3.14159f;
 
 static bool draw_frame(void *p)
 {
+	ay_music_continue(5);
+
 	struct vk_context *vk = p;
 	VkResult r = vk_acquire_frame(vk);
 

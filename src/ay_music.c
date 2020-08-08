@@ -222,6 +222,10 @@ bool pcm_play_chunk(lr32 *buff, snd_pcm_uframes_t size)
 
 
 thrd_t player;
+cnd_t  wake;
+mtx_t  wake_mtx;
+int    ticks;
+bool   pausable;
 bool   exit_player;
 
 int ay_music_init(void)
@@ -239,8 +243,20 @@ void ay_music_stop(void)
 {
 	exit_player = true;
 	thrd_join(player, NULL);
+	if (!pausable)
+		mtx_destroy(&wake_mtx);
 	free(chunk);
 	pcm_stop();
+}
+
+void ay_music_continue(int t)
+{
+	if (!pausable) {
+		mtx_init(&wake_mtx, mtx_plain);
+		pausable = true;
+	}
+	ticks = t;
+	cnd_signal(&wake);
 }
 
 int music_thread(void*);
@@ -477,6 +493,10 @@ play_music:
 			} // каналы
 			if (exit_player)
 				return 0;
+			// Приостанавливаем воспроизведение, пока основной поток не возобновит.
+			if (pausable && --ticks <= 0) {
+				cnd_wait(&wake, &wake_mtx);
+			}
 			ay_make_chunk();
 			pcm_play_chunk(chunk, chunk_size);
 		} // for (i < delay)
