@@ -145,6 +145,8 @@ struct vk_frame {
 	VkFence         	pending;	///< готовность буфера команд.
 	VkBuffer        	vert_buf;
 	VkDeviceMemory  	vert_mem;
+	VkBuffer        	indx_buf;
+	VkDeviceMemory  	indx_mem;
 };
 
 /** Создаёт связанную с Воландом поверхность Вулкан. */
@@ -666,7 +668,7 @@ VkResult create_buffer(struct vk_context *vk, VkDeviceSize size,
 	};
 	VkResult r = vkCreateBuffer(vk->device, &buf_info, allocator, buffer);
 	if (r == VK_SUCCESS) {
-		printf("  Создаётся буфер:");
+		printf("  Создаётся буфер (%#x):", usage);
 		struct VkMemoryRequirements req;
 		vkGetBufferMemoryRequirements(vk->device, *buffer, &req);
 		struct VkPhysicalDeviceMemoryProperties props;
@@ -691,24 +693,44 @@ VkResult create_buffer(struct vk_context *vk, VkDeviceSize size,
 	return r;
 }
 
-/** Подготавливает буфер вершин для заполнения. */
-VkResult vk_begin_vertex_buffer(struct vk_context *vk, VkDeviceSize size, void **dest)
+/** Подготавливает буфер для заполнения. */
+static inline
+VkResult begin_buffer(struct vk_context *vk, VkBuffer *buf, VkDeviceMemory *mem,
+                      VkDeviceSize size, VkBufferUsageFlags usage, void **dest)
 {
 	VkResult r = VK_SUCCESS;
-	if (vk->frame[vk->active].vert_buf == VK_NULL_HANDLE)
-		r = create_buffer(vk, size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+	if (*buf == VK_NULL_HANDLE)
+		r = create_buffer(vk, size, usage,
 		                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-		                  &vk->frame[vk->active].vert_buf, &vk->frame[vk->active].vert_mem);
+		                  buf, mem);
 	*dest = NULL;
 	if (r == VK_SUCCESS)
-		r = vkMapMemory(vk->device, vk->frame[vk->active].vert_mem, 0, size, 0, dest);
+		r = vkMapMemory(vk->device, *mem, 0, size, 0, dest);
 	return r;
+}
+
+VkResult vk_begin_vertex_buffer(struct vk_context *vk, VkDeviceSize size, void **dest)
+{
+	struct vk_frame *f = &vk->frame[vk->active];
+	return begin_buffer(vk, &f->vert_buf, &f->vert_mem, size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, dest);
 }
 
 void vk_end_vertex_buffer(struct vk_context *vk)
 {
 	// TODO vkFlushMappedMemoryRanges()
 	vkUnmapMemory(vk->device, vk->frame[vk->active].vert_mem);
+}
+
+VkResult vk_begin_index_buffer(struct vk_context *vk, VkDeviceSize size, void **dest)
+{
+	struct vk_frame *f = &vk->frame[vk->active];
+	return begin_buffer(vk, &f->indx_buf, &f->indx_mem, size, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, dest);
+}
+
+void vk_end_index_buffer(struct vk_context *vk)
+{
+	// TODO vkFlushMappedMemoryRanges()
+	vkUnmapMemory(vk->device, vk->frame[vk->active].indx_mem);
 }
 
 VkResult vk_acquire_frame(struct vk_context *vk)
@@ -863,6 +885,13 @@ void vk_cmd_draw_vertices(struct vk_context *vk, uint32_t count, uint32_t first)
 	vkCmdDraw(vk->frame[vk->active].cmd, count, 1, first, 0);
 }
 
+void vk_cmd_draw_indexed(struct vk_context *vk, uint32_t count)
+{
+	vkCmdBindVertexBuffers(vk->frame[vk->active].cmd, 0, 1, &vk->frame[vk->active].vert_buf, &(VkDeviceSize){0});
+	vkCmdBindIndexBuffer(vk->frame[vk->active].cmd, vk->frame[vk->active].indx_buf, 0, VK_INDEX_TYPE_UINT16);
+	vkCmdDrawIndexed(vk->frame[vk->active].cmd, count, 1, 0, 0, 0);
+}
+
 VkResult vk_end_render_cmd(struct vk_context *vk)
 {
 	vkCmdEndRenderPass(vk->frame[vk->active].cmd);
@@ -923,6 +952,8 @@ void vk_window_destroy(void *vk_context)
 		vkDestroyImageView(vk->device, vk->frame[vk->count].view, allocator);
 		vkFreeMemory(vk->device, vk->frame[vk->count].vert_mem, allocator);
 		vkDestroyBuffer(vk->device, vk->frame[vk->count].vert_buf, allocator);
+		vkFreeMemory(vk->device, vk->frame[vk->count].indx_mem, allocator);
+		vkDestroyBuffer(vk->device, vk->frame[vk->count].indx_buf, allocator);
 	} while (vk->count--);
 	free(vk->acq_pool);
 	free(vk->frame);
