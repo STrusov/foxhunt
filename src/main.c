@@ -16,11 +16,14 @@
  *
  */
 
-#include <stdio.h>
-
 #include "ay_music.h"
 #include "vulkan.h"
 #include "wayland_window.h"
+
+typedef uint16_t vert_index;
+typedef unsigned fast_index;
+
+#include "triangulatio.h"
 
 const float PI = 3.14159f;
 
@@ -31,12 +34,20 @@ static bool draw_frame(void *p)
 	struct vk_context *vk = p;
 	VkResult r = vk_acquire_frame(vk);
 
-	const unsigned cnt = 3;
-	void *dest;
-	r = vk_begin_vertex_buffer(vk, cnt * sizeof(struct vertex2d), &dest);
-	struct vertex2d *vert = dest;
+	const unsigned cnt = 6;
+	void *vert_buf;
+	r = vk_begin_vertex_buffer(vk, (1 + cnt) * sizeof(struct vertex2d), &vert_buf);
+	struct vertex2d *vert = vert_buf;
 	static float angle;
 	angle = angle + PI/192;
+#if 01
+	vert->pos.x = 0;
+	vert->pos.y = 0;
+	vert->color.r = 0.5f;
+	vert->color.g = 0.5f;
+	vert->color.b = 0.5f;
+	++vert;
+#endif
 	for (unsigned i = 0; i < cnt; ++i) {
 		vert->pos.x = 0.95f * cosf(angle + i * 2*PI/cnt);
 		vert->pos.y = 0.95f * sinf(angle + i * 2*PI/cnt);
@@ -45,20 +56,20 @@ static bool draw_frame(void *p)
 		vert->color.b = 0.3f + 0.7f * cosf(4 * angle + i * 2*PI/(2*cnt));
 		++vert;
 	}
-	vk_end_vertex_buffer(vk);
-	const unsigned vcnt = vert - (struct vertex2d*)dest;
+	const unsigned vcnt = vert - (struct vertex2d*)vert_buf;
 
-	const unsigned icnt = vcnt;
-	uint16_t *idx;
-	r = vk_begin_index_buffer(vk, icnt * sizeof(*idx), &dest);
-	idx = dest;
-	for (unsigned i = 0; i < icnt; ++i){
-		*idx++ = i;
-	}
+	unsigned tcnt = vcnt;
+	struct tri_index *indx;
+	void *indx_buf;
+	r = vk_begin_index_buffer(vk, tcnt * sizeof(*indx), &indx_buf);
+	indx = indx_buf;
+	triangulate(vert_buf, vcnt, &indx, &tcnt);
+
+	vk_end_vertex_buffer(vk);
 	vk_end_index_buffer(vk);
 
 	r = vk_begin_render_cmd(vk);
-		vk_cmd_draw_indexed(vk, icnt);
+		vk_cmd_draw_indexed(vk, 3 * tcnt);
 	r = vk_end_render_cmd(vk);
 
 	r = vk_present_frame(vk);
