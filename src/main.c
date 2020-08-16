@@ -27,6 +27,105 @@ typedef unsigned fast_index;
 
 const float PI = 3.14159f;
 
+struct polygon {
+	struct pos2d    	*vertex;
+	struct tri_index	*index;
+	fast_index      	vert_count;
+	/** Количество треугольников (индексов больше втрое) */
+	fast_index      	tri_count;
+};
+
+static const struct polygon polygon8 = {
+	.vertex     = (struct pos2d     [9]) {},
+	.index      = (struct tri_index [8]) {},
+	.vert_count = 9,
+	.tri_count  = 8,
+};
+
+/** Заполняет массив индексов, строя триангуляцию для заданных вершин. */
+static void poly_triangulate(const struct polygon *p)
+{
+	struct tri_index *triangle = p->index;
+	unsigned idx = 0;
+#ifndef	NDEBUG
+	unsigned iter = 0, conv = 0;
+#endif
+	// Первые три вершины объединяем в треугольник.
+	triangle->v[0] = idx++;
+	triangle->v[1] = idx++;
+	triangle->v[2] = idx++;
+	++triangle;
+	// Последующие точки связываем с ближайшей стороной предыдущего треугольника.
+	for (; p->vert_count > 3 && idx <= p->vert_count; ++idx) {
+#ifndef	NDEBUG
+		++iter;
+#endif
+		assert((vert_index)idx == idx);
+		assert(triangle != &p->index[p->tri_count]);
+		struct tri_index *pt = triangle - 1;
+		// VkPipelineRasterizationStateCreateInfo задаёт
+		// VK_FRONT_FACE_CLOCKWISE и VK_CULL_MODE_BACK_BIT.
+		// Индексы должны указывать расположенные по часовой стрелке вершины.
+		triangle->v[0] = pt->v[0];
+		triangle->v[1] = pt->v[2];
+		triangle->v[2] = idx < p->vert_count ? idx : p->index[0].v[1];
+		++triangle;
+	}
+	assert(p->tri_count == triangle - p->index);
+#ifndef	NDEBUG
+	printf("Триангуляция: вершины (%u), треугольники (%u), итерации (%u), преобразования (%u)\n",
+			p->vert_count, p->tri_count, iter, conv);
+	for (int i = 0; i < p->tri_count; ++i) {
+		unsigned i0 = p->index[i].v[0];
+		unsigned i1 = p->index[i].v[1];
+		unsigned i2 = p->index[i].v[2];
+		printf("  {%u[%.2f;%.2f] %u[%.2f;%.2f] %u[%.2f;%.2f]}",
+				i0, p->vertex[i0].x, p->vertex[i0].y,
+				i1, p->vertex[i1].x, p->vertex[i1].y,
+				i2, p->vertex[i2].x, p->vertex[i2].y);
+	}
+	printf("\n");
+#endif
+}
+
+static void dot_triangulate(const struct polygon *p, float scale)
+{
+	p->vertex[0].x = 0;
+	p->vertex[0].y = 0;
+	const unsigned ccnt = p->vert_count - 1;
+	for (unsigned i = 1; i <= ccnt; ++i) {
+		p->vertex[i].x = scale * cosf((2*i + 1) * PI/ccnt);
+		p->vertex[i].y = scale * sinf((2*i + 1) * PI/ccnt);
+	}
+	poly_triangulate(p);
+}
+
+static void gfx_init()
+{
+	dot_triangulate(&polygon8, 0.90);
+}
+
+
+static
+void poly_draw(const struct polygon *p, struct pos2d coord, float scale,
+               struct vertex2d *restrict *restrict vert_buf,
+               vert_index *restrict *restrict indx_buf, vert_index *base)
+{
+	for (unsigned i = 0; i < p->vert_count; ++i) {
+		(*vert_buf)->pos.x = scale * p->vertex[i].x + coord.x;
+		(*vert_buf)->pos.y = scale * p->vertex[i].y + coord.y;
+		(*vert_buf)->color = (struct color){ 0.5, 0.5, 0.5 };
+		++*vert_buf;
+	}
+	for (unsigned i = 0; i < p->tri_count; ++i) {
+		*(*indx_buf)++ = p->index[i].v[0] + *base;
+		*(*indx_buf)++ = p->index[i].v[1] + *base;
+		*(*indx_buf)++ = p->index[i].v[2] + *base;
+	}
+	*base += p->vert_count;
+}
+
+
 static bool draw_frame(void *p)
 {
 	ay_music_continue(5);
@@ -35,8 +134,11 @@ static bool draw_frame(void *p)
 	VkResult r = vk_acquire_frame(vk);
 
 	const unsigned cnt = 6;
+	const unsigned dot_cnt = 80;
+	const unsigned total_vertices = dot_cnt * dot_cnt * polygon8.vert_count + (1 + cnt);
+
 	void *vert_buf;
-	r = vk_begin_vertex_buffer(vk, (1 + cnt) * sizeof(struct vertex2d), &vert_buf);
+	r = vk_begin_vertex_buffer(vk, total_vertices * sizeof(struct vertex2d), &vert_buf);
 	struct vertex2d *vert = vert_buf;
 	static float angle;
 	angle = angle + PI/192;
@@ -59,17 +161,30 @@ static bool draw_frame(void *p)
 	const unsigned vcnt = vert - (struct vertex2d*)vert_buf;
 
 	unsigned tcnt = vcnt;
+	const unsigned total_triangles = dot_cnt * dot_cnt * polygon8.tri_count + tcnt;
 	struct tri_index *indx;
 	void *indx_buf;
-	r = vk_begin_index_buffer(vk, tcnt * sizeof(*indx), &indx_buf);
+	r = vk_begin_index_buffer(vk, total_triangles * sizeof(*indx), &indx_buf);
 	indx = indx_buf;
 	triangulate(vert_buf, vcnt, &indx, &tcnt);
+
+	vert_index current = vcnt;
+	vert_index *cur_idx = &indx[tcnt].v[0];
+	for (int y = 0; y < dot_cnt; ++y) {
+		for (int x = 0; x < dot_cnt; ++x) {
+			struct pos2d xy = {
+				.x = ((2*x + 1) / (float)dot_cnt) - 1,
+				.y = ((2*y + 1) / (float)dot_cnt) - 1,
+			};
+			poly_draw(&polygon8, xy, 1./dot_cnt, &vert, &cur_idx, &current);
+		}
+	}
 
 	vk_end_vertex_buffer(vk);
 	vk_end_index_buffer(vk);
 
 	r = vk_begin_render_cmd(vk);
-		vk_cmd_draw_indexed(vk, 3 * tcnt);
+		vk_cmd_draw_indexed(vk, 3 * total_triangles);
 	r = vk_end_render_cmd(vk);
 
 	r = vk_present_frame(vk);
@@ -93,6 +208,9 @@ int main(int argc, char *argv[])
 
 	if (vk_init() != VK_SUCCESS)
 		return 2;
+
+	gfx_init();
+//	return 0;
 
 	struct window window = {
 		.render	= &vulkan,
