@@ -123,6 +123,7 @@ void poly_draw(const struct polygon *p, struct pos2d coord, float scale,
 		*(*indx_buf)++ = p->index[i].v[2] + *base;
 	}
 	*base += p->vert_count;
+	assert((*indx_buf)[-1] < *base);
 }
 
 
