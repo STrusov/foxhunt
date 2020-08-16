@@ -885,10 +885,16 @@ void vk_cmd_draw_vertices(struct vk_context *vk, uint32_t count, uint32_t first)
 	vkCmdDraw(vk->frame[vk->active].cmd, count, 1, first, 0);
 }
 
-void vk_cmd_draw_indexed(struct vk_context *vk, uint32_t count)
+void vk_cmd_draw_indexed(struct vk_context *vk, uint32_t count, size_t index_size)
 {
 	vkCmdBindVertexBuffers(vk->frame[vk->active].cmd, 0, 1, &vk->frame[vk->active].vert_buf, &(VkDeviceSize){0});
-	vkCmdBindIndexBuffer(vk->frame[vk->active].cmd, vk->frame[vk->active].indx_buf, 0, VK_INDEX_TYPE_UINT16);
+	VkIndexType index_type;
+	switch (index_size) {
+		default: assert(0);
+		case sizeof(uint16_t): index_type = VK_INDEX_TYPE_UINT16; break;
+		case sizeof(uint32_t): index_type = VK_INDEX_TYPE_UINT32; break;
+	}
+	vkCmdBindIndexBuffer(vk->frame[vk->active].cmd, vk->frame[vk->active].indx_buf, 0, index_type);
 	vkCmdDrawIndexed(vk->frame[vk->active].cmd, count, 1, 0, 0, 0);
 }
 

@@ -20,7 +20,7 @@
 #include "vulkan.h"
 #include "wayland_window.h"
 
-typedef uint16_t vert_index;
+typedef uint32_t vert_index;
 typedef unsigned fast_index;
 
 #include "triangulatio.h"
@@ -134,7 +134,7 @@ static bool draw_frame(void *p)
 	VkResult r = vk_acquire_frame(vk);
 
 	const unsigned cnt = 6;
-	const unsigned dot_cnt = 80;
+	const unsigned dot_cnt = 160;
 	const unsigned total_vertices = dot_cnt * dot_cnt * polygon8.vert_count + (1 + cnt);
 
 	void *vert_buf;
@@ -184,7 +184,7 @@ static bool draw_frame(void *p)
 	vk_end_index_buffer(vk);
 
 	r = vk_begin_render_cmd(vk);
-		vk_cmd_draw_indexed(vk, 3 * total_triangles);
+		vk_cmd_draw_indexed(vk, 3 * total_triangles, sizeof(vert_index));
 	r = vk_end_render_cmd(vk);
 
 	r = vk_present_frame(vk);
