@@ -518,7 +518,7 @@ static VkResult create_pipeline(struct vk_context *vk)
 		}, {
 			.location	= 1,
 			.binding 	= 0,
-			.format  	= VK_FORMAT_R32G32B32_SFLOAT,
+			.format  	= VK_FORMAT_R32G32B32A32_SFLOAT,
 			.offset  	= offsetof(struct vertex2d, color),
 		},
 	};
@@ -578,12 +578,12 @@ static VkResult create_pipeline(struct vk_context *vk)
 		.alphaToOneEnable     	= VK_FALSE,
 	};
 	static const struct VkPipelineColorBlendAttachmentState cb_attach = {
-		.blendEnable        	= VK_FALSE,
-		.srcColorBlendFactor	= VK_BLEND_FACTOR_ZERO,
-		.dstColorBlendFactor	= VK_BLEND_FACTOR_ZERO,
+		.blendEnable        	= VK_TRUE,
+		.srcColorBlendFactor	= VK_BLEND_FACTOR_SRC_ALPHA,
+		.dstColorBlendFactor	= VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
 		.colorBlendOp       	= VK_BLEND_OP_ADD,
 		.srcAlphaBlendFactor	= VK_BLEND_FACTOR_ZERO,
-		.dstAlphaBlendFactor	= VK_BLEND_FACTOR_ZERO,
+		.dstAlphaBlendFactor	= VK_BLEND_FACTOR_ONE,
 		.alphaBlendOp       	= VK_BLEND_OP_ADD,
 		.colorWriteMask     	= VK_COLOR_COMPONENT_R_BIT
 		                    	| VK_COLOR_COMPONENT_G_BIT

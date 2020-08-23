@@ -114,7 +114,7 @@ void poly_draw(const struct polygon *p, struct pos2d coord, float scale,
 	for (unsigned i = 0; i < p->vert_count; ++i) {
 		(*vert_buf)->pos.x = scale * p->vertex[i].x + coord.x;
 		(*vert_buf)->pos.y = scale * p->vertex[i].y + coord.y;
-		(*vert_buf)->color = (struct color){ 0.5, 0.5, 0.5 };
+		(*vert_buf)->color = (struct color){ 0.5, 0.5, 0.5, 0.2 };
 		++*vert_buf;
 	}
 	for (unsigned i = 0; i < p->tri_count; ++i) {
@@ -149,6 +149,7 @@ static bool draw_frame(void *p)
 	vert->color.r = 0.5f;
 	vert->color.g = 0.5f;
 	vert->color.b = 0.5f;
+	vert->color.a = 1.0f;
 	++vert;
 #endif
 	for (unsigned i = 0; i < cnt; ++i) {
@@ -157,6 +158,7 @@ static bool draw_frame(void *p)
 		vert->color.r = 0.3f + 0.7f * cosf(2 * angle + i * 2*PI/(4*cnt));
 		vert->color.g = 0.3f + 0.7f * cosf(3 * angle + i * 2*PI/(3*cnt));
 		vert->color.b = 0.3f + 0.7f * cosf(4 * angle + i * 2*PI/(2*cnt));
+		vert->color.a = 0.0f;
 		++vert;
 	}
 	const unsigned vcnt = vert - (struct vertex2d*)vert_buf;
