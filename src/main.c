@@ -105,16 +105,23 @@ static void gfx_init()
 	dot_triangulate(&polygon8, 0.90);
 }
 
+static inline void color_copy(struct vertex2d *restrict vert, struct color src)
+{
+	vert->color = src;
+}
 
 static
 void poly_draw(const struct polygon *p, struct pos2d coord, float scale,
+               void(painter)(struct vertex2d*, struct color), struct color color,
                struct vertex2d *restrict *restrict vert_buf,
                vert_index *restrict *restrict indx_buf, vert_index *base)
 {
+	if (!painter)
+		painter = color_copy;
 	for (unsigned i = 0; i < p->vert_count; ++i) {
 		(*vert_buf)->pos.x = scale * p->vertex[i].x + coord.x;
 		(*vert_buf)->pos.y = scale * p->vertex[i].y + coord.y;
-		(*vert_buf)->color = (struct color){ 0.5, 0.5, 0.5, 0.2 };
+		painter(*vert_buf, color);
 		++*vert_buf;
 	}
 	for (unsigned i = 0; i < p->tri_count; ++i) {
@@ -179,7 +186,9 @@ static bool draw_frame(void *p)
 				.x = ((2*x + 1) / (float)dot_cnt) - 1,
 				.y = ((2*y + 1) / (float)dot_cnt) - 1,
 			};
-			poly_draw(&polygon8, xy, 1./dot_cnt, &vert, &cur_idx, &current);
+			poly_draw(&polygon8, xy, 1./dot_cnt,
+			          NULL, (struct color){ 0.5, 0.5, 0.5, 0.1 },
+			          &vert, &cur_idx, &current);
 		}
 	}
 
