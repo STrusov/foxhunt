@@ -120,12 +120,18 @@ static inline void color_copy(struct vertex2d *restrict vert, struct color src)
 	vert->color = src;
 }
 
+/** Параметр \stage определяет производится ли отрисовка, или определяются размеры буферов. */
 static
 void poly_draw(const struct polygon *p, struct pos2d coord, float scale,
                void(painter)(struct vertex2d*, struct color), struct color color,
-               struct vertex2d *restrict *restrict vert_buf,
+               int stage, struct vertex2d *restrict *restrict vert_buf,
                vert_index *restrict *restrict indx_buf, vert_index *base)
 {
+	if (!stage) {
+		*vert_buf += p->vert_count;
+		*indx_buf += 3 * p->tri_count;
+		return;
+	}
 	if (!painter)
 		painter = color_copy;
 	for (unsigned i = 0; i < p->vert_count; ++i) {
@@ -168,7 +174,7 @@ static inline unsigned glyphwidth(unsigned idx)
 static
 void draw_text(char *str, const struct polygon *poly, struct pos2d at, float scale,
                void(painter)(struct vertex2d*, struct color), struct color color,
-               struct vertex2d *restrict *restrict vert_buf,
+               int stage, struct vertex2d *restrict *restrict vert_buf,
                vert_index *restrict *restrict indx_buf, vert_index *base)
 {
 	int cnt;
@@ -196,7 +202,8 @@ void draw_text(char *str, const struct polygon *poly, struct pos2d at, float sca
 						.x = at.x + (v + x0) * scale/glyph_height,
 						.y = at.y + (l + y0) * scale/glyph_height,
 					};
-					poly_draw(poly, xy, scale/glyph_height/2, painter, color, vert_buf, indx_buf, base);
+					poly_draw(poly, xy, scale/glyph_height/2, painter, color,
+					          stage, vert_buf, indx_buf, base);
 				}
 				line >>= 1;
 			}
@@ -212,68 +219,90 @@ static bool draw_frame(void *p)
 	struct vk_context *vk = p;
 	VkResult r = vk_acquire_frame(vk);
 
-	const unsigned cnt = 6;
-	const unsigned dot_cnt = 160;
-	const unsigned total_vertices =  (5*8*8 + dot_cnt*dot_cnt) * polygon8.vert_count + (1 + cnt);
-
-	void *vert_buf;
-	r = vk_begin_vertex_buffer(vk, total_vertices * sizeof(struct vertex2d), &vert_buf);
-	struct vertex2d *vert = vert_buf;
 	static float angle;
 	angle = angle + PI/192;
-#if 01
-	vert->pos.x = 0;
-	vert->pos.y = 0;
-	vert->color.r = 0.5f;
-	vert->color.g = 0.5f;
-	vert->color.b = 0.5f;
-	vert->color.a = 1.0f;
-	++vert;
-#endif
-	for (unsigned i = 0; i < cnt; ++i) {
-		vert->pos.x = 0.95f * cosf(angle + i * 2*PI/cnt);
-		vert->pos.y = 0.95f * sinf(angle + i * 2*PI/cnt);
-		vert->color.r = 0.3f + 0.7f * cosf(2 * angle + i * 2*PI/(4*cnt));
-		vert->color.g = 0.3f + 0.7f * cosf(3 * angle + i * 2*PI/(3*cnt));
-		vert->color.b = 0.3f + 0.7f * cosf(4 * angle + i * 2*PI/(2*cnt));
-		vert->color.a = 0.0f;
-		++vert;
-	}
-	const unsigned vcnt = vert - (struct vertex2d*)vert_buf;
 
-	unsigned tcnt = vcnt;
-	const unsigned total_triangles = (5*8*8 + dot_cnt*dot_cnt) * polygon8.tri_count + tcnt;
-	struct tri_index *indx;
-	void *indx_buf;
-	r = vk_begin_index_buffer(vk, total_triangles * sizeof(*indx), &indx_buf);
-	indx = indx_buf;
-	triangulate(vert_buf, vcnt, &indx, &tcnt);
+	// На стадии 0 вычисляем размер буферов, на следующей их заполняем.
+	unsigned total_indices;
+	unsigned total_vertices;
+	for (int stage = 0; stage <= 1; ++stage) {
 
-	vert_index current = vcnt;
-	vert_index *cur_idx = &indx[tcnt].v[0];
-	for (int y = 0; y < dot_cnt; ++y) {
-		for (int x = 0; x < dot_cnt; ++x) {
-			struct pos2d xy = {
-				.x = ((2*x + 1) / (float)dot_cnt) - 1,
-				.y = ((2*y + 1) / (float)dot_cnt) - 1,
-			};
-			poly_draw(&polygon8, xy, 1./dot_cnt,
-			          NULL, (struct color){ 0.5, 0.5, 0.5, 0.1 },
-			          &vert, &cur_idx, &current);
+		const unsigned cnt = 6;
+		const unsigned dot_cnt = 160;
+
+		void *vert_buf = NULL;
+		if (stage)
+			r = vk_begin_vertex_buffer(vk, total_vertices * sizeof(struct vertex2d), &vert_buf);
+		struct vertex2d *vert = vert_buf;
+
+		if (stage) {
+			vert->pos.x = 0;
+			vert->pos.y = 0;
+			vert->color.r = 0.5f;
+			vert->color.g = 0.5f;
+			vert->color.b = 0.5f;
+			vert->color.a = 1.0f;
 		}
-	}
-	struct pos2d pos = {
-		.x = 0,
-		.y = 0,
-	};
-	draw_text("00000", &polygon8, pos, 1./8, NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 },
-	          &vert, &cur_idx, &current);
+		++vert;
+		for (unsigned i = 0; i < cnt; ++i) {
+			if (stage) {
+				vert->pos.x = 0.95f * cosf(angle + i * 2*PI/cnt);
+				vert->pos.y = 0.95f * sinf(angle + i * 2*PI/cnt);
+				vert->color.r = 0.3f + 0.7f * cosf(2 * angle + i * 2*PI/(4*cnt));
+				vert->color.g = 0.3f + 0.7f * cosf(3 * angle + i * 2*PI/(3*cnt));
+				vert->color.b = 0.3f + 0.7f * cosf(4 * angle + i * 2*PI/(2*cnt));
+				vert->color.a = 0.0f;
+			}
+			++vert;
+		}
+		const unsigned vcnt = vert - (struct vertex2d*)vert_buf;
 
+		unsigned tcnt;
+		struct tri_index *indx;
+		void *indx_buf = NULL;
+		if (stage)
+			r = vk_begin_index_buffer(vk, total_indices * sizeof(vert_index), &indx_buf);
+		indx = indx_buf;
+		if (stage)
+			triangulate(vert_buf, vcnt, &indx, &tcnt);
+		else
+			tcnt = vcnt - 1;
+
+		vert_index current = vcnt;
+		vert_index *cur_idx = &indx[tcnt].v[0];
+		for (int y = 0; y < dot_cnt; ++y) {
+			for (int x = 0; x < dot_cnt; ++x) {
+				struct pos2d xy = {
+					.x = ((2*x + 1) / (float)dot_cnt) - 1,
+					.y = ((2*y + 1) / (float)dot_cnt) - 1,
+				};
+				poly_draw(&polygon8, xy, 1./dot_cnt,
+				          NULL, (struct color){ 0.5, 0.5, 0.5, 0.1 },
+				          stage, &vert, &cur_idx, &current);
+			}
+		}
+		struct pos2d pos = {
+			.x = 0,
+			.y = 0,
+		};
+		draw_text("00000", &polygon8, pos, 1./8, NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 },
+				  stage, &vert, &cur_idx, &current);
+
+		if (stage) {
+#ifndef	NDEBUG
+			printf("total_vertices = %u\ttotal_indices = %u\n", total_vertices, total_indices);
+#endif
+			assert(total_vertices == vert - (struct vertex2d*)vert_buf);
+			assert(total_indices  == cur_idx - (vert_index*)indx_buf);
+		}
+		total_vertices = vert - (struct vertex2d*)vert_buf;
+		total_indices  = cur_idx - (vert_index*)indx_buf;
+	}
 	vk_end_vertex_buffer(vk);
 	vk_end_index_buffer(vk);
 
 	r = vk_begin_render_cmd(vk);
-		vk_cmd_draw_indexed(vk, 3 * total_triangles, sizeof(vert_index));
+		vk_cmd_draw_indexed(vk, total_indices, sizeof(vert_index));
 	r = vk_end_render_cmd(vk);
 
 	r = vk_present_frame(vk);
