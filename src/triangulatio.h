@@ -100,6 +100,7 @@ void triangulate(struct vertex2d *restrict vert, unsigned const vcnt,
 			// TODO VkPipelineRasterizationStateCreateInfo задаёт
 			// VK_FRONT_FACE_CLOCKWISE и VK_CULL_MODE_BACK_BIT.
 			// Индексы должны указывать расположенные по часовой стрелке вершины.
+last:
 			triangle->v[0] = pt->v[0];
 			triangle->v[1] = pt->v[2];
 			if (idx < vcnt) {
@@ -125,6 +126,8 @@ void triangulate(struct vertex2d *restrict vert, unsigned const vcnt,
 #ifndef	NDEBUG
 				++conv;
 #endif
+			} else {
+				goto last;
 			}
 		}
 	}
