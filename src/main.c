@@ -42,6 +42,16 @@ static const struct polygon polygon8 = {
 	.tri_count  = 8,
 };
 
+enum {
+	glyph_height = 8,
+	glyph_width  = 5,
+	glyph_count  = 1,
+};
+
+static const uint8_t font[glyph_count][glyph_height] = {
+	{ 0x1e, 0x21, 0x21, 0x00, 0x21, 0x21, 0x1e, 0x00 },	// 0
+};
+
 /** Заполняет массив индексов, строя триангуляцию для заданных вершин. */
 static void poly_triangulate(const struct polygon *p)
 {
@@ -133,6 +143,67 @@ void poly_draw(const struct polygon *p, struct pos2d coord, float scale,
 	assert((*indx_buf)[-1] < *base);
 }
 
+/** Вычисляет ширину глифа символа в "пикселях" */
+static inline unsigned glyphwidth(unsigned idx)
+{
+	static unsigned char width[glyph_count];
+	if (!width[idx]) {
+		unsigned char w = 0;
+		// накладываем строки глифа на 1 линию.
+		uint8_t line = 0;
+		for (int l = 0; l < glyph_height; ++l)
+			line |= font[idx][l];
+		while (line) {
+			line >>= 1;
+			++w;
+		}
+		if (!w)
+			w = glyph_width;
+		width[idx] = w;
+	}
+	return width[idx];
+}
+
+/** Выводит строку символов с центровкой относительно заданных координат */
+static
+void draw_text(char *str, const struct polygon *poly, struct pos2d at, float scale,
+               void(painter)(struct vertex2d*, struct color), struct color color,
+               struct vertex2d *restrict *restrict vert_buf,
+               vert_index *restrict *restrict indx_buf, vert_index *base)
+{
+	int cnt;
+	// Предварительно подготавливаем индексы в массиве font и ширину глифов.
+	unsigned glidx[32] = {};
+	unsigned width[32];
+	for (cnt = 0; *str; ++str, ++cnt) {
+		glidx[cnt] = *str - '0';
+	}
+	assert(cnt);
+	unsigned line_width = 0;
+	for (int i = 0; i < cnt; ++i) {
+		width[i] = glyphwidth(glidx[i]);
+		line_width += width[i] + 1; // межсимвольный интервал.
+	}
+	line_width -= 1;
+	const float y0 = -glyph_height / 2.0;
+	float x0 = line_width / -2.0;
+	for (int c = 0; c < cnt; ++c) {
+		for (int l = 0; l < glyph_height; ++l) {
+			unsigned line = font[glidx[c]][l];
+			for (int v = width[c]; v ; --v) {
+				if (line & 1) {
+					const struct pos2d xy = {
+						.x = at.x + (v + x0) * scale/glyph_height,
+						.y = at.y + (l + y0) * scale/glyph_height,
+					};
+					poly_draw(poly, xy, scale/glyph_height/2, painter, color, vert_buf, indx_buf, base);
+				}
+				line >>= 1;
+			}
+		}
+		x0 += width[c] + 1;
+	}
+}
 
 static bool draw_frame(void *p)
 {
@@ -143,7 +214,7 @@ static bool draw_frame(void *p)
 
 	const unsigned cnt = 6;
 	const unsigned dot_cnt = 160;
-	const unsigned total_vertices = dot_cnt * dot_cnt * polygon8.vert_count + (1 + cnt);
+	const unsigned total_vertices =  (5*8*8 + dot_cnt*dot_cnt) * polygon8.vert_count + (1 + cnt);
 
 	void *vert_buf;
 	r = vk_begin_vertex_buffer(vk, total_vertices * sizeof(struct vertex2d), &vert_buf);
@@ -171,7 +242,7 @@ static bool draw_frame(void *p)
 	const unsigned vcnt = vert - (struct vertex2d*)vert_buf;
 
 	unsigned tcnt = vcnt;
-	const unsigned total_triangles = dot_cnt * dot_cnt * polygon8.tri_count + tcnt;
+	const unsigned total_triangles = (5*8*8 + dot_cnt*dot_cnt) * polygon8.tri_count + tcnt;
 	struct tri_index *indx;
 	void *indx_buf;
 	r = vk_begin_index_buffer(vk, total_triangles * sizeof(*indx), &indx_buf);
@@ -191,6 +262,12 @@ static bool draw_frame(void *p)
 			          &vert, &cur_idx, &current);
 		}
 	}
+	struct pos2d pos = {
+		.x = 0,
+		.y = 0,
+	};
+	draw_text("00000", &polygon8, pos, 1./8, NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 },
+	          &vert, &cur_idx, &current);
 
 	vk_end_vertex_buffer(vk);
 	vk_end_index_buffer(vk);
