@@ -228,6 +228,25 @@ static inline unsigned glyphwidth(unsigned idx)
 	return width[idx];
 }
 
+/** Определяет количество пикселей в глифе. */
+static inline unsigned glyphpopc(unsigned idx)
+{
+	static unsigned char popc[glyph_count];
+	if (!popc[idx]) {
+		unsigned n = 0;
+		for (int l = 0; l < glyph_height; ++l) {
+			uint8_t line = font[idx][l];
+			// См. Генри Уоррен "Алгоритмические трюки для программистов"
+			while (line) {
+				++n;
+				line &= line - 1;
+			}
+		}
+		popc[idx] = n + 1; // исключаем повторное вычисление для пробелов
+	}
+	return popc[idx] - 1;
+}
+
 /** Выводит строку символов с центровкой относительно заданных координат */
 static
 void draw_text(const char *str, const struct polygon *poly, struct pos2d at, float scale,
@@ -250,10 +269,20 @@ void draw_text(const char *str, const struct polygon *poly, struct pos2d at, flo
 		}
 	}
 	assert(cnt);
+	unsigned popc = 0;
 	unsigned line_width = 0;
 	for (int i = 0; i < cnt; ++i) {
-		width[i] = glyphwidth(glidx[i]);
-		line_width += width[i] + 1; // межсимвольный интервал.
+		if (stage) {
+			width[i] = glyphwidth(glidx[i]);
+			line_width += width[i] + 1; // межсимвольный интервал.
+		} else {
+			popc += glyphpopc(glidx[i]);
+		}
+	}
+	if (!stage) {
+		*vert_buf += popc * poly->vert_count;
+		*indx_buf += popc * 3 * poly->tri_count;
+		return;
 	}
 	line_width -= 1;
 	const float y0 = -glyph_height / 2.0;
