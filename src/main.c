@@ -25,6 +25,8 @@ typedef unsigned fast_index;
 
 #include "triangulatio.h"
 
+const float aspect_ratio = 4.0/3.0;
+
 const float PI = 3.14159f;
 
 struct polygon {
@@ -386,7 +388,7 @@ static bool draw_frame(void *p)
 		};
 		const int text_lines = sizeof(text)/sizeof(*text);
 		for (int s = 0; s < text_lines; ++s) {
-			float size = 1./ 5;
+			float size = 1./ 6;
 			const struct pos2d pos = {
 				.x = 0,
 				.y = (0.5 + s - text_lines/2.) * size * (glyph_height+1.)/glyph_height,
@@ -409,6 +411,12 @@ static bool draw_frame(void *p)
 	vk_end_index_buffer(vk);
 
 	r = vk_begin_render_cmd(vk);
+		// TODO Достаточно установить однократно.
+		const struct transform transform = {
+			.scale     = { 1.0, aspect_ratio, 1.0, 1.0 },
+			.translate = { 0 },
+		};
+		vk_cmd_push_transform(vk, &transform);
 		vk_cmd_draw_indexed(vk, total_indices, sizeof(vert_index));
 	r = vk_end_render_cmd(vk);
 
@@ -440,10 +448,10 @@ int main(int argc, char *argv[])
 	struct window window = {
 		.render	= &vulkan,
 		.title	= "Окно",
-		.width	= 640,
-		.height	= 640,
+		.width	= 800,
+//		.height	= 600,
 		.border = 10,
-		.aspect_ratio = 1,
+		.aspect_ratio = aspect_ratio,
 //		.constant_aspect_ratio = true,
 	};
 	window_create(&window);

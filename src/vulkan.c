@@ -598,12 +598,17 @@ static VkResult create_pipeline(struct vk_context *vk)
 		.pAttachments   	= &cb_attach,
 		.blendConstants 	= { 0.0, 0.0, 0.0, 0.0, },
 	};
+	static const struct VkPushConstantRange push_constant = {
+		.stageFlags	= VK_SHADER_STAGE_VERTEX_BIT,
+		.offset    	= 0,
+		.size      	= sizeof(struct transform),
+	};
 	static const struct VkPipelineLayoutCreateInfo pipelinelayoutinfo = {
 		.sType                 	= VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
 		.setLayoutCount        	= 0,
 		.pSetLayouts           	= NULL,
-		.pushConstantRangeCount	= 0,
-		.pPushConstantRanges   	= NULL,
+		.pushConstantRangeCount	= 1,
+		.pPushConstantRanges   	= &push_constant,
 	};
 	VkResult r = VK_SUCCESS;
 	if (!vk->pipeline_layout) {
@@ -877,6 +882,12 @@ VkResult vk_begin_render_cmd(struct vk_context *vk)
 		vkCmdBindPipeline(vk->frame[vk->active].cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk->graphics_pipeline);
 	}
 	return r;
+}
+
+void vk_cmd_push_transform(struct vk_context *vk, const struct transform *tf)
+{
+	vkCmdPushConstants(vk->frame[vk->active].cmd, vk->pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT,
+	                   0, sizeof(struct transform), tf);
 }
 
 void vk_cmd_draw_vertices(struct vk_context *vk, uint32_t count, uint32_t first)

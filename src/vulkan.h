@@ -30,6 +30,19 @@ struct pos2d {
 	float	y;
 };
 
+struct vec4 {
+	float	x;
+	float	y;
+	float	z;
+	float	w;
+};
+
+/// Редуцированная матрица трансформации \see shader.vert
+struct transform {
+	struct vec4 	scale;
+	struct vec4 	translate;
+};
+
 struct color {
 	float	r;
 	float	g;
@@ -57,6 +70,7 @@ VkResult vk_begin_index_buffer(struct vk_context *vk, VkDeviceSize size, void **
 void vk_end_index_buffer(struct vk_context *vk);
 
 VkResult vk_begin_render_cmd(struct vk_context *vk);
+void vk_cmd_push_transform(struct vk_context *vk, const struct transform *tf);
 void vk_cmd_draw_vertices(struct vk_context *vk, uint32_t count, uint32_t first);
 void vk_cmd_draw_indexed(struct vk_context *vk, uint32_t count, size_t index_size);
 VkResult vk_end_render_cmd(struct vk_context *vk);
