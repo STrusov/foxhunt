@@ -41,7 +41,7 @@ bool delaunay(float x, float y, float x1, float y1, float x2, float y2, float x3
  * вокруг центральной точки; без центра порождает лишние невидимые треугольники).
  */
 static
-void triangulate(struct vertex2d *restrict vert, unsigned const vcnt,
+void triangulate(struct vertex *restrict vert, unsigned const vcnt,
                  struct tri_index *restrict *indices, unsigned *restrict tcnt)
 {
 	struct tri_index *triangle = *indices;

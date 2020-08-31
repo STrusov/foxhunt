@@ -175,7 +175,7 @@ static void gfx_init()
 	dot_triangulate(&polygon8, 0.90);
 }
 
-static inline void color_copy(struct vertex2d *restrict vert, struct color src)
+static inline void color_copy(struct vertex *restrict vert, struct color src)
 {
 	vert->color = src;
 }
@@ -183,8 +183,8 @@ static inline void color_copy(struct vertex2d *restrict vert, struct color src)
 /** Параметр \stage определяет производится ли отрисовка, или определяются размеры буферов. */
 static
 void poly_draw(const struct polygon *p, struct pos2d coord, float scale,
-               void(painter)(struct vertex2d*, struct color), struct color color,
-               int stage, struct vertex2d *restrict *restrict vert_buf,
+               void(painter)(struct vertex*, struct color), struct color color,
+               int stage, struct vertex *restrict *restrict vert_buf,
                vert_index *restrict *restrict indx_buf, vert_index *base)
 {
 	if (!stage) {
@@ -197,6 +197,8 @@ void poly_draw(const struct polygon *p, struct pos2d coord, float scale,
 	for (unsigned i = 0; i < p->vert_count; ++i) {
 		(*vert_buf)->pos.x = scale * p->vertex[i].x + coord.x;
 		(*vert_buf)->pos.y = scale * p->vertex[i].y + coord.y;
+		(*vert_buf)->pos.z = 0;
+		(*vert_buf)->pos.w = 1.0f;
 		painter(*vert_buf, color);
 		++*vert_buf;
 	}
@@ -252,8 +254,8 @@ static inline unsigned glyphpopc(unsigned idx)
 /** Выводит строку символов с центровкой относительно заданных координат */
 static
 void draw_text(const char *str, const struct polygon *poly, struct pos2d at, float scale,
-               void(painter)(struct vertex2d*, struct color), struct color color,
-               int stage, struct vertex2d *restrict *restrict vert_buf,
+               void(painter)(struct vertex*, struct color), struct color color,
+               int stage, struct vertex *restrict *restrict vert_buf,
                vert_index *restrict *restrict indx_buf, vert_index *base)
 {
 	int cnt;
@@ -326,14 +328,16 @@ static bool draw_frame(void *p)
 		const unsigned cnt = 6;
 		const unsigned dot_cnt = 160;
 
-		void *vert_buf = NULL;
+		struct vertex *vert_buf = NULL;
 		if (stage)
-			r = vk_begin_vertex_buffer(vk, total_vertices * sizeof(struct vertex2d), &vert_buf);
-		struct vertex2d *vert = vert_buf;
+			r = vk_begin_vertex_buffer(vk, total_vertices * sizeof(struct vertex), &vert_buf);
+		struct vertex *vert = vert_buf;
 
 		if (stage) {
 			vert->pos.x = 0;
 			vert->pos.y = 0;
+			vert->pos.z = 0;
+			vert->pos.w = 1.0f;
 			vert->color.r = 0.5f;
 			vert->color.g = 0.5f;
 			vert->color.b = 0.5f;
@@ -344,6 +348,8 @@ static bool draw_frame(void *p)
 			if (stage) {
 				vert->pos.x = 0.95f * cosf(angle + i * 2*PI/cnt);
 				vert->pos.y = 0.95f * sinf(angle + i * 2*PI/cnt);
+				vert->pos.z = 0;
+				vert->pos.w = 2.0f;
 				vert->color.r = 0.3f + 0.7f * cosf(2 * angle + i * 2*PI/(4*cnt));
 				vert->color.g = 0.3f + 0.7f * cosf(3 * angle + i * 2*PI/(3*cnt));
 				vert->color.b = 0.3f + 0.7f * cosf(4 * angle + i * 2*PI/(2*cnt));
@@ -351,7 +357,7 @@ static bool draw_frame(void *p)
 			}
 			++vert;
 		}
-		const unsigned vcnt = vert - (struct vertex2d*)vert_buf;
+		const unsigned vcnt = vert - vert_buf;
 
 		unsigned tcnt;
 		struct tri_index *indx;
@@ -401,10 +407,10 @@ static bool draw_frame(void *p)
 #ifndef	NDEBUG
 			printf("total_vertices = %u\ttotal_indices = %u\n", total_vertices, total_indices);
 #endif
-			assert(total_vertices == vert - (struct vertex2d*)vert_buf);
+			assert(total_vertices == vert - vert_buf);
 			assert(total_indices  == cur_idx - (vert_index*)indx_buf);
 		}
-		total_vertices = vert - (struct vertex2d*)vert_buf;
+		total_vertices = vert - vert_buf;
 		total_indices  = cur_idx - (vert_index*)indx_buf;
 	}
 	vk_end_vertex_buffer(vk);

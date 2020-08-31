@@ -506,20 +506,20 @@ static VkResult create_pipeline(struct vk_context *vk)
 	static_assert(sizeof(shader_stages)/sizeof(*shader_stages) == sizeof(vk->shader)/sizeof(*vk->shader));
 	static const struct VkVertexInputBindingDescription vertex_binding = {
 		.binding  	= 0,
-		.stride   	= sizeof(struct vertex2d),
+		.stride   	= sizeof(struct vertex),
 		.inputRate	= VK_VERTEX_INPUT_RATE_VERTEX,
 	};
 	static const struct VkVertexInputAttributeDescription vertex_attributes[] = {
 		{
 			.location	= 0,
 			.binding 	= 0,
-			.format  	= VK_FORMAT_R32G32_SFLOAT,
-			.offset  	= offsetof(struct vertex2d, pos),
+			.format  	= VK_FORMAT_R32G32B32A32_SFLOAT,
+			.offset  	= offsetof(struct vertex, pos),
 		}, {
 			.location	= 1,
 			.binding 	= 0,
 			.format  	= VK_FORMAT_R32G32B32A32_SFLOAT,
-			.offset  	= offsetof(struct vertex2d, color),
+			.offset  	= offsetof(struct vertex, color),
 		},
 	};
 	static const struct VkPipelineVertexInputStateCreateInfo vertexinput_state = {
@@ -714,10 +714,10 @@ VkResult begin_buffer(struct vk_context *vk, VkBuffer *buf, VkDeviceMemory *mem,
 	return r;
 }
 
-VkResult vk_begin_vertex_buffer(struct vk_context *vk, VkDeviceSize size, void **dest)
+VkResult vk_begin_vertex_buffer(struct vk_context *vk, VkDeviceSize size, struct vertex **dest)
 {
 	struct vk_frame *f = &vk->frame[vk->active];
-	return begin_buffer(vk, &f->vert_buf, &f->vert_mem, size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, dest);
+	return begin_buffer(vk, &f->vert_buf, &f->vert_mem, size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, (void**)dest);
 }
 
 void vk_end_vertex_buffer(struct vk_context *vk)

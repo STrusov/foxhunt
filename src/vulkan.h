@@ -50,8 +50,8 @@ struct color {
 	float	a;
 };
 
-struct vertex2d {
-	struct pos2d	pos;
+struct vertex {
+	struct vec4 	pos;
 	struct color	color;
 };
 
@@ -60,7 +60,7 @@ struct vertex2d {
 VkResult vk_acquire_frame(struct vk_context *vk);
 
 /** Подготавливает буфер вершин для заполнения.                           */
-VkResult vk_begin_vertex_buffer(struct vk_context *vk, VkDeviceSize size, void **dest);
+VkResult vk_begin_vertex_buffer(struct vk_context *vk, VkDeviceSize size, struct vertex **dest);
 /** Завершает заполнение буфера вершин.                                   */
 void vk_end_vertex_buffer(struct vk_context *vk);
 
