@@ -507,9 +507,9 @@ void window_create(struct window *window)
 	if (window->constant_aspect_ratio)
 		window->aspect_ratio = window->width / (double)window->height;
 	if (!window->height && window->aspect_ratio)
-		window->height = window->width / window->aspect_ratio;
+		window->height = window->width / window->aspect_ratio + 0.5;
 	if (!window->width && window->aspect_ratio)
-		window->width = window->height * window->aspect_ratio;
+		window->width = window->height * window->aspect_ratio + 0.5;
 
 	assert(2 * window->border <= window->width);
 	assert(2 * window->border <= window->height);
