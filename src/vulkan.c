@@ -625,7 +625,7 @@ static VkResult create_pipeline(struct vk_context *vk)
 		const struct VkGraphicsPipelineCreateInfo pipelineinfo = {
 			.sType              	= VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
 			.flags              	= VK_PIPELINE_CREATE_ALLOW_DERIVATIVES_BIT
-			                    	| first ? 0 : VK_PIPELINE_CREATE_DERIVATIVE_BIT,
+			                    	| (first ? 0 : VK_PIPELINE_CREATE_DERIVATIVE_BIT),
 			.stageCount         	= sizeof(shader_stages)/sizeof(*shader_stages),
 			.pStages            	= shader_stages,
 			.pVertexInputState  	= &vertexinput_state,
