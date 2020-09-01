@@ -27,6 +27,29 @@ typedef unsigned fast_index;
 
 const float aspect_ratio = 4.0/3.0;
 
+/*
+ Изображение строится по однородным (гомогенным) координатам вершин (clip coordinate),
+ представляющим собой 4-х компонентный вектор (x, y, z, w), проецированием
+ в нормализованные координаты устройства, ограниченные квадратом с координатами
+ углов (±1, ±1). Сторона квадрата равна 2 (отсюда 2 в вычислениях и шаг циклах).
+
+ Проекция выполняется делением пространственных координат (x, y, z) на 4-ю
+ компоненту (w). Так масштабирование перекладывается на граф.процессор.
+
+    Видимые координаты для окна с соотношением сторон 4:3
+        (-w, -w) +----------------+ (w, -w)
+                 |////////////////|
+    (-w, -0.75w) |                | (w, -0.75w)
+                 |                |
+                 |        .       |
+                 |      (0,0)     |
+                 |                |
+     (-w, 0.75w) |                | (w, 0.75w)
+                 |////////////////|
+         (-w, w) +----------------+ (w, w)
+
+*/
+
 const float PI = 3.14159f;
 
 struct polygon {
@@ -182,7 +205,7 @@ static inline void color_copy(struct vertex *restrict vert, struct color src)
 
 /** Параметр \stage определяет производится ли отрисовка, или определяются размеры буферов. */
 static
-void poly_draw(const struct polygon *p, struct pos2d coord, float scale,
+void poly_draw(const struct polygon *p, struct vec4 coordinate,
                void(painter)(struct vertex*, struct color), struct color color,
                int stage, struct vertex *restrict *restrict vert_buf,
                vert_index *restrict *restrict indx_buf, vert_index *base)
@@ -195,10 +218,10 @@ void poly_draw(const struct polygon *p, struct pos2d coord, float scale,
 	if (!painter)
 		painter = color_copy;
 	for (unsigned i = 0; i < p->vert_count; ++i) {
-		(*vert_buf)->pos.x = scale * p->vertex[i].x + coord.x;
-		(*vert_buf)->pos.y = scale * p->vertex[i].y + coord.y;
-		(*vert_buf)->pos.z = 0;
-		(*vert_buf)->pos.w = 1.0f;
+		(*vert_buf)->pos.x = coordinate.x + p->vertex[i].x;
+		(*vert_buf)->pos.y = coordinate.y + p->vertex[i].y;
+		(*vert_buf)->pos.z = coordinate.z;
+		(*vert_buf)->pos.w = coordinate.w;
 		painter(*vert_buf, color);
 		++*vert_buf;
 	}
@@ -253,7 +276,7 @@ static inline unsigned glyphpopc(unsigned idx)
 
 /** Выводит строку символов с центровкой относительно заданных координат */
 static
-void draw_text(const char *str, const struct polygon *poly, struct pos2d at, float scale,
+void draw_text(const char *str, const struct polygon *poly, struct vec4 at,
                void(painter)(struct vertex*, struct color), struct color color,
                int stage, struct vertex *restrict *restrict vert_buf,
                vert_index *restrict *restrict indx_buf, vert_index *base)
@@ -274,7 +297,7 @@ void draw_text(const char *str, const struct polygon *poly, struct pos2d at, flo
 	}
 	assert(cnt);
 	unsigned popc = 0;
-	unsigned line_width = 0;
+	int line_width = 0;
 	for (int i = 0; i < cnt; ++i) {
 		if (stage) {
 			width[i] = glyphwidth(glidx[i]);
@@ -289,24 +312,25 @@ void draw_text(const char *str, const struct polygon *poly, struct pos2d at, flo
 		return;
 	}
 	line_width -= 1;
-	const float y0 = -glyph_height / 2.0;
-	float x0 = line_width / -2.0;
+	int x0 = -line_width - 1;
 	for (int c = 0; c < cnt; ++c) {
 		for (int l = 0; l < glyph_height; ++l) {
 			unsigned line = font[glidx[c]][l];
-			for (int v = width[c]; v ; --v) {
+			for (int v = 2 * width[c]; v ; v -= 2) {
 				if (line & 1) {
-					const struct pos2d xy = {
-						.x = at.x + (v + x0) * scale/glyph_height,
-						.y = at.y + (l + y0) * scale/glyph_height,
+					const struct vec4 coord = {
+						.x = at.x + (x0 + v),
+						.y = at.y + (2 * l - glyph_height + 2),
+						.z = at.z,
+						.w = at.w * (2 * glyph_height),
 					};
-					poly_draw(poly, xy, scale/glyph_height/2, painter, color,
+					poly_draw(poly, coord, painter, color,
 					          stage, vert_buf, indx_buf, base);
 				}
 				line >>= 1;
 			}
 		}
-		x0 += width[c] + 1;
+		x0 += 2 * width[c] + 2;
 	}
 }
 
@@ -326,7 +350,7 @@ static bool draw_frame(void *p)
 	for (int stage = 0; stage <= 1; ++stage) {
 
 		const unsigned cnt = 6;
-		const unsigned dot_cnt = 160;
+		const int dot_cnt = 160;
 
 		struct vertex *vert_buf = NULL;
 		if (stage)
@@ -372,13 +396,9 @@ static bool draw_frame(void *p)
 
 		vert_index current = vcnt;
 		vert_index *cur_idx = &indx[tcnt].v[0];
-		for (int y = 0; y < dot_cnt; ++y) {
-			for (int x = 0; x < dot_cnt; ++x) {
-				struct pos2d xy = {
-					.x = ((2*x + 1) / (float)dot_cnt) - 1,
-					.y = ((2*y + 1) / (float)dot_cnt) - 1,
-				};
-				poly_draw(&polygon8, xy, 1./dot_cnt,
+		for (int y = -dot_cnt/aspect_ratio + 1; y < dot_cnt/aspect_ratio; y += 2) {
+			for (int x = -dot_cnt + 1; x < dot_cnt; x += 2) {
+				poly_draw(&polygon8, (struct vec4){ x, y, 0, dot_cnt },
 				          NULL, (struct color){ 0.5, 0.5, 0.5, 0.1 },
 				          stage, &vert, &cur_idx, &current);
 			}
@@ -394,12 +414,13 @@ static bool draw_frame(void *p)
 		};
 		const int text_lines = sizeof(text)/sizeof(*text);
 		for (int s = 0; s < text_lines; ++s) {
-			float size = 1./ 6;
-			const struct pos2d pos = {
+			const struct vec4 pos = {
 				.x = 0,
-				.y = (0.5 + s - text_lines/2.) * size * (glyph_height+1.)/glyph_height,
+				.y = 2 * (glyph_height + 1) * (s + 0.5f * (1 - text_lines)),
+				.z = 0,
+				.w = 6,
 			};
-			draw_text(text[s], &polygon8, pos, size, NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 },
+			draw_text(text[s], &polygon8, pos, NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 },
 			          stage, &vert, &cur_idx, &current);
 		}
 
