@@ -361,6 +361,12 @@ static VkResult create_swapchain(struct vk_context *vk, uint32_t width, uint32_t
 	if (vk->old_swapchain) {
 		// Проверим занятость буфера команд по VK_TIMEOUT
 		// TODO без этой команды валидатор рапортует о занятости ДРУГОГО буфера.
+		// TODO изредка при 0-м ожидании валидатор выдаёт при отложенном освобождении:
+		// VUID-vkFreeCommandBuffers-pCommandBuffers-00047(ERROR / SPEC): msgNum: 448332540 - Validation Error: [ VUID-vkFreeCommandBuffers-pCommandBuffers-00047 ] Object 0: handle = 0x56527e5e2010, type = VK_OBJECT_TYPE_COMMAND_BUFFER; | MessageID = 0x1ab902fc | Attempt to free VkCommandBuffer 0x56527e5e2010[] which is in use. The Vulkan spec states: All elements of pCommandBuffers must not be in the pending state (https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#VUID-vkFreeCommandBuffers-pCommandBuffers-00047)
+		// VUID-vkDestroyFramebuffer-framebuffer-00892(ERROR / SPEC): msgNum: -617577710 - Validation Error: [ VUID-vkDestroyFramebuffer-framebuffer-00892 ] Object 0: handle = 0x56527e5a0580, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xdb308312 | Cannot call vkDestroyFramebuffer on VkFramebuffer 0x2540000000254[] that is currently in use by a command buffer. The Vulkan spec states: All submitted commands that refer to framebuffer must have completed execution (https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#VUID-vkDestroyFramebuffer-framebuffer-00892)
+		// VUID-vkDestroyImageView-imageView-01026(ERROR / SPEC): msgNum: 1672225264 - Validation Error: [ VUID-vkDestroyImageView-imageView-01026 ] Object 0: handle = 0x56527e5a0580, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x63ac21f0 | Cannot call vkDestroyImageView on VkImageView 0x2530000000253[] that is currently in use by a command buffer. The Vulkan spec states: All submitted commands that refer to imageView must have completed execution (https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#VUID-vkDestroyImageView-imageView-01026)
+		// при этом vkDeviceWaitIdle(vk->device) перед освобождением
+		// в vk_begin_render_cmd() поведение не меняет.
 		VkResult busy = vkWaitForFences(vk->device, 1, &vk->frame[vk->active].pending, VK_TRUE, 0);
 		if (busy) {
 			vk->frame[vk->count].cmd     = vk->frame[vk->active].cmd;
@@ -995,6 +1001,11 @@ void vk_window_resize(void *p, uint32_t width, uint32_t height)
 	struct vk_context *vk = p;
 	if (!vk->old_swapchain && !vk->old_pipeline) {
 		create_swapchain(vk, width, height);
+		// TODO Пересоздание конвеера для смены разрешения не выглядит эффективным,
+		// однако, вариант с вызовом vkCmdSetViewport() и vkCmdSetScissor() в
+		// vk_begin_render_cmd() приводит к следующим сообщениям валидатора:
+		// VUID-vkBeginCommandBuffer-commandBuffer-00049(ERROR / SPEC): msgNum: -2080204129 - Validation Error: [ VUID-vkBeginCommandBuffer-commandBuffer-00049 ] Object 0: handle = 0x55add92449c0, type = VK_OBJECT_TYPE_COMMAND_BUFFER; | MessageID = 0x84029a9f | Calling vkBeginCommandBuffer() on active VkCommandBuffer 0x55add92449c0[] before it has completed. You must check command buffer fence before this call. The Vulkan spec states: commandBuffer must not be in the recording or pending state (https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#VUID-vkBeginCommandBuffer-commandBuffer-00049)
+		// VUID-vkQueueSubmit-pCommandBuffers-00071(ERROR / SPEC): msgNum: 774851941 - Validation Error: [ VUID-vkQueueSubmit-pCommandBuffers-00071 ] Object 0: handle = 0x55add9225540, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x2e2f4d65 | VkCommandBuffer 0x55add92449c0[] is already in use and is not marked for simultaneous use. The Vulkan spec states: If any element of the pCommandBuffers member of any element of pSubmits was not recorded with the VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT, it must not be in the pending state (https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#VUID-vkQueueSubmit-pCommandBuffers-00071)
 		create_pipeline(vk);
 	}
 }
