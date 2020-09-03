@@ -203,35 +203,40 @@ static inline void color_copy(struct vertex *restrict vert, struct color src)
 	vert->color = src;
 }
 
+struct draw_ctx {
+	struct vertex 	*restrict vert_buf;
+	vert_index    	*restrict indx_buf;
+	vert_index    	base;
+};
+
 /** Параметр \stage определяет производится ли отрисовка, или определяются размеры буферов. */
 static
 void poly_draw(const struct polygon *p, struct vec4 coordinate,
                void(painter)(struct vertex*, struct color), struct color color,
-               int stage, struct vertex *restrict *restrict vert_buf,
-               vert_index *restrict *restrict indx_buf, vert_index *base)
+               int stage, struct draw_ctx *restrict ctx)
 {
 	if (!stage) {
-		*vert_buf += p->vert_count;
-		*indx_buf += 3 * p->tri_count;
+		ctx->vert_buf += p->vert_count;
+		ctx->indx_buf += 3 * p->tri_count;
 		return;
 	}
 	if (!painter)
 		painter = color_copy;
 	for (unsigned i = 0; i < p->vert_count; ++i) {
-		(*vert_buf)->pos.x = coordinate.x + p->vertex[i].x;
-		(*vert_buf)->pos.y = coordinate.y + p->vertex[i].y;
-		(*vert_buf)->pos.z = coordinate.z;
-		(*vert_buf)->pos.w = coordinate.w;
-		painter(*vert_buf, color);
-		++*vert_buf;
+		ctx->vert_buf->pos.x = coordinate.x + p->vertex[i].x;
+		ctx->vert_buf->pos.y = coordinate.y + p->vertex[i].y;
+		ctx->vert_buf->pos.z = coordinate.z;
+		ctx->vert_buf->pos.w = coordinate.w;
+		painter(ctx->vert_buf, color);
+		++ctx->vert_buf;
 	}
 	for (unsigned i = 0; i < p->tri_count; ++i) {
-		*(*indx_buf)++ = p->index[i].v[0] + *base;
-		*(*indx_buf)++ = p->index[i].v[1] + *base;
-		*(*indx_buf)++ = p->index[i].v[2] + *base;
+		*ctx->indx_buf++ = p->index[i].v[0] + ctx->base;
+		*ctx->indx_buf++ = p->index[i].v[1] + ctx->base;
+		*ctx->indx_buf++ = p->index[i].v[2] + ctx->base;
 	}
-	*base += p->vert_count;
-	assert((*indx_buf)[-1] < *base);
+	ctx->base += p->vert_count;
+	assert(ctx->indx_buf[-1] < ctx->base);
 }
 
 /** Вычисляет ширину глифа символа в "пикселях" */
@@ -278,8 +283,7 @@ static inline unsigned glyphpopc(unsigned idx)
 static
 void draw_text(const char *str, const struct polygon *poly, struct vec4 at,
                void(painter)(struct vertex*, struct color), struct color color,
-               int stage, struct vertex *restrict *restrict vert_buf,
-               vert_index *restrict *restrict indx_buf, vert_index *base)
+               int stage, struct draw_ctx *restrict ctx)
 {
 	int cnt;
 	// Предварительно подготавливаем индексы в массиве font и ширину глифов.
@@ -307,8 +311,8 @@ void draw_text(const char *str, const struct polygon *poly, struct vec4 at,
 		}
 	}
 	if (!stage) {
-		*vert_buf += popc * poly->vert_count;
-		*indx_buf += popc * 3 * poly->tri_count;
+		ctx->vert_buf += popc * poly->vert_count;
+		ctx->indx_buf += popc * 3 * poly->tri_count;
 		return;
 	}
 	line_width -= 1;
@@ -324,8 +328,7 @@ void draw_text(const char *str, const struct polygon *poly, struct vec4 at,
 						.z = at.z,
 						.w = at.w * (2 * glyph_height),
 					};
-					poly_draw(poly, coord, painter, color,
-					          stage, vert_buf, indx_buf, base);
+					poly_draw(poly, coord, painter, color, stage, ctx);
 				}
 				line >>= 1;
 			}
@@ -355,33 +358,36 @@ static bool draw_frame(void *p)
 		struct vertex *vert_buf = NULL;
 		if (stage)
 			r = vk_begin_vertex_buffer(vk, total_vertices * sizeof(struct vertex), &vert_buf);
-		struct vertex *vert = vert_buf;
+
+		struct draw_ctx dc = {
+			.vert_buf = vert_buf,
+		};
 
 		if (stage) {
-			vert->pos.x = 0;
-			vert->pos.y = 0;
-			vert->pos.z = 0;
-			vert->pos.w = 1.0f;
-			vert->color.r = 0.5f;
-			vert->color.g = 0.5f;
-			vert->color.b = 0.5f;
-			vert->color.a = 1.0f;
+			dc.vert_buf->pos.x = 0;
+			dc.vert_buf->pos.y = 0;
+			dc.vert_buf->pos.z = 0;
+			dc.vert_buf->pos.w = 1.0f;
+			dc.vert_buf->color.r = 0.5f;
+			dc.vert_buf->color.g = 0.5f;
+			dc.vert_buf->color.b = 0.5f;
+			dc.vert_buf->color.a = 1.0f;
 		}
-		++vert;
+		++dc.vert_buf;
 		for (unsigned i = 0; i < cnt; ++i) {
 			if (stage) {
-				vert->pos.x = 0.95f * cosf(angle + i * 2*PI/cnt);
-				vert->pos.y = 0.95f * sinf(angle + i * 2*PI/cnt);
-				vert->pos.z = 0;
-				vert->pos.w = 2.0f;
-				vert->color.r = 0.3f + 0.7f * cosf(2 * angle + i * 2*PI/(4*cnt));
-				vert->color.g = 0.3f + 0.7f * cosf(3 * angle + i * 2*PI/(3*cnt));
-				vert->color.b = 0.3f + 0.7f * cosf(4 * angle + i * 2*PI/(2*cnt));
-				vert->color.a = 0.0f;
+				dc.vert_buf->pos.x = 0.95f * cosf(angle + i * 2*PI/cnt);
+				dc.vert_buf->pos.y = 0.95f * sinf(angle + i * 2*PI/cnt);
+				dc.vert_buf->pos.z = 0;
+				dc.vert_buf->pos.w = 2.0f;
+				dc.vert_buf->color.r = 0.3f + 0.7f * cosf(2 * angle + i * 2*PI/(4*cnt));
+				dc.vert_buf->color.g = 0.3f + 0.7f * cosf(3 * angle + i * 2*PI/(3*cnt));
+				dc.vert_buf->color.b = 0.3f + 0.7f * cosf(4 * angle + i * 2*PI/(2*cnt));
+				dc.vert_buf->color.a = 0.0f;
 			}
-			++vert;
+			++dc.vert_buf;
 		}
-		const unsigned vcnt = vert - vert_buf;
+		const unsigned vcnt = dc.vert_buf - vert_buf;
 
 		unsigned tcnt;
 		struct tri_index *indx;
@@ -394,13 +400,13 @@ static bool draw_frame(void *p)
 		else
 			tcnt = vcnt - 1;
 
-		vert_index current = vcnt;
-		vert_index *cur_idx = &indx[tcnt].v[0];
+		dc.indx_buf = &indx[tcnt].v[0];
+		dc.base = vcnt;
 		for (int y = -dot_cnt/aspect_ratio + 1; y < dot_cnt/aspect_ratio; y += 2) {
 			for (int x = -dot_cnt + 1; x < dot_cnt; x += 2) {
 				poly_draw(&polygon8, (struct vec4){ x, y, 0, dot_cnt },
 				          NULL, (struct color){ 0.5, 0.5, 0.5, 0.1 },
-				          stage, &vert, &cur_idx, &current);
+				          stage, &dc);
 			}
 		}
 		const char *text[] = {
@@ -421,18 +427,15 @@ static bool draw_frame(void *p)
 				.w = 6,
 			};
 			draw_text(text[s], &polygon8, pos, NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 },
-			          stage, &vert, &cur_idx, &current);
+			          stage, &dc);
 		}
 
 		if (stage) {
-#ifndef	NDEBUG
-			printf("total_vertices = %u\ttotal_indices = %u\n", total_vertices, total_indices);
-#endif
-			assert(total_vertices == vert - vert_buf);
-			assert(total_indices  == cur_idx - (vert_index*)indx_buf);
+			assert(total_vertices == dc.vert_buf - vert_buf);
+			assert(total_indices  == dc.indx_buf - (vert_index*)indx_buf);
 		}
-		total_vertices = vert - vert_buf;
-		total_indices  = cur_idx - (vert_index*)indx_buf;
+		total_vertices = dc.vert_buf - vert_buf;
+		total_indices  = dc.indx_buf - (vert_index*)indx_buf;
 	}
 	vk_end_vertex_buffer(vk);
 	vk_end_index_buffer(vk);
