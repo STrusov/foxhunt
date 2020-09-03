@@ -732,10 +732,10 @@ void vk_end_vertex_buffer(struct vk_context *vk)
 	vkUnmapMemory(vk->device, vk->frame[vk->active].vert_mem);
 }
 
-VkResult vk_begin_index_buffer(struct vk_context *vk, VkDeviceSize size, void **dest)
+VkResult vk_begin_index_buffer(struct vk_context *vk, VkDeviceSize size, vert_index **dest)
 {
 	struct vk_frame *f = &vk->frame[vk->active];
-	return begin_buffer(vk, &f->indx_buf, &f->indx_mem, size, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, dest);
+	return begin_buffer(vk, &f->indx_buf, &f->indx_mem, size, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, (void**)dest);
 }
 
 void vk_end_index_buffer(struct vk_context *vk)
@@ -902,11 +902,11 @@ void vk_cmd_draw_vertices(struct vk_context *vk, uint32_t count, uint32_t first)
 	vkCmdDraw(vk->frame[vk->active].cmd, count, 1, first, 0);
 }
 
-void vk_cmd_draw_indexed(struct vk_context *vk, uint32_t count, size_t index_size)
+void vk_cmd_draw_indexed(struct vk_context *vk, uint32_t count)
 {
 	vkCmdBindVertexBuffers(vk->frame[vk->active].cmd, 0, 1, &vk->frame[vk->active].vert_buf, &(VkDeviceSize){0});
 	VkIndexType index_type;
-	switch (index_size) {
+	switch (sizeof(vert_index)) {
 		default: assert(0);
 		case sizeof(uint16_t): index_type = VK_INDEX_TYPE_UINT16; break;
 		case sizeof(uint32_t): index_type = VK_INDEX_TYPE_UINT32; break;

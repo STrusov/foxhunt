@@ -104,10 +104,10 @@ static bool draw_frame(void *p)
 
 		unsigned tcnt;
 		struct tri_index *indx;
-		void *indx_buf = NULL;
+		vert_index *indx_buf = NULL;
 		if (stage)
 			r = vk_begin_index_buffer(vk, total_indices * sizeof(vert_index), &indx_buf);
-		indx = indx_buf;
+		indx = (struct tri_index*)indx_buf;
 		if (stage)
 			triangulate(vert_buf, vcnt, &indx, &tcnt);
 		else
@@ -145,10 +145,10 @@ static bool draw_frame(void *p)
 
 		if (stage) {
 			assert(total_vertices == dc.vert_buf - vert_buf);
-			assert(total_indices  == dc.indx_buf - (vert_index*)indx_buf);
+			assert(total_indices  == dc.indx_buf - indx_buf);
 		}
 		total_vertices = dc.vert_buf - vert_buf;
-		total_indices  = dc.indx_buf - (vert_index*)indx_buf;
+		total_indices  = dc.indx_buf - indx_buf;
 	}
 	vk_end_vertex_buffer(vk);
 	vk_end_index_buffer(vk);
@@ -160,7 +160,7 @@ static bool draw_frame(void *p)
 			.translate = { 0 },
 		};
 		vk_cmd_push_transform(vk, &transform);
-		vk_cmd_draw_indexed(vk, total_indices, sizeof(vert_index));
+		vk_cmd_draw_indexed(vk, total_indices);
 	r = vk_end_render_cmd(vk);
 
 	r = vk_present_frame(vk);

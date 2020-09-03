@@ -45,14 +45,14 @@ VkResult vk_begin_vertex_buffer(struct vk_context *vk, VkDeviceSize size, struct
 void vk_end_vertex_buffer(struct vk_context *vk);
 
 /** Подготавливает буфер индексов для заполнения.                         */
-VkResult vk_begin_index_buffer(struct vk_context *vk, VkDeviceSize size, void **dest);
+VkResult vk_begin_index_buffer(struct vk_context *vk, VkDeviceSize size, vert_index **dest);
 /** Завершает заполнение буфера индексов.                                 */
 void vk_end_index_buffer(struct vk_context *vk);
 
 VkResult vk_begin_render_cmd(struct vk_context *vk);
 void vk_cmd_push_transform(struct vk_context *vk, const struct transform *tf);
 void vk_cmd_draw_vertices(struct vk_context *vk, uint32_t count, uint32_t first);
-void vk_cmd_draw_indexed(struct vk_context *vk, uint32_t count, size_t index_size);
+void vk_cmd_draw_indexed(struct vk_context *vk, uint32_t count);
 VkResult vk_end_render_cmd(struct vk_context *vk);
 
 /** Отображает кадр. */
