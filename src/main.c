@@ -50,6 +50,53 @@ const float aspect_ratio = 4.0/3.0;
 
 */
 
+enum {
+	board_size_max = 9,
+};
+
+static int board_size = 9;
+
+struct board_cell {
+	int	fox_here;
+	int	fox_visible;
+	int	open;
+};
+
+static struct board_cell board[board_size_max*board_size_max];
+
+static struct board_cell* board_at(int x, int y)
+{
+	return &board[x + y * board_size];
+}
+
+static void board_draw(int stage, struct draw_ctx *restrict ctx)
+{
+	const float step = 2.0f;
+	float y = 1.0f - board_size;
+	for (int yc = 0; yc < board_size; ++yc, y += step) {
+		float x = 1.0f - board_size * aspect_ratio;
+		for (int xc = 0; xc < board_size; ++xc, x += step) {
+			struct vec4 at = {
+				.x = x,
+				.y = y,
+				.z = 0,
+				.w = board_size * aspect_ratio,
+			};
+			poly_draw(&square094, at,
+			          NULL, (struct color){ 0.5f, 0.4f, 0.1f, 0.5f },
+			          stage, ctx);
+			const struct board_cell *cell = board_at(xc, yc);
+			if (1 || cell->open > 0) {
+				char num[2] = { cell->fox_visible + '0', '\x00' };
+				at.x *= 2 * glyph_height;
+				at.y *= 2 * glyph_height;
+				draw_text(num, &polygon8, at, NULL, (struct color){ 0.95f, 0.2f, 0.2f, 0.95f },
+				          stage, ctx);
+			}
+		}
+	}
+}
+
 static bool draw_frame(void *p)
 {
 	ay_music_continue(5);
@@ -122,6 +169,9 @@ static bool draw_frame(void *p)
 				          stage, &dc);
 			}
 		}
+
+		board_draw(stage, &dc);
+
 		const char *text[] = {
 			"ОХОТА НА ЛИС",
 			"! \"#$%&'",

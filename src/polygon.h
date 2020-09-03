@@ -15,6 +15,7 @@ struct polygon {
 	fast_index      	tri_count;
 };
 
+const struct polygon square094;
 const struct polygon polygon8;
 
 void poly_init();

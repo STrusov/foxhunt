@@ -5,6 +5,13 @@
 
 #include "polygon.h"
 
+const struct polygon square094 = {
+	.vertex     = (struct pos2d     [5]) {},
+	.index      = (struct tri_index [4]) {},
+	.vert_count = 5,
+	.tri_count  = 4,
+};
+
 const struct polygon polygon8 = {
 	.vertex     = (struct pos2d     [9]) {},
 	.index      = (struct tri_index [8]) {},
@@ -72,6 +79,7 @@ static void dot_triangulate(const struct polygon *p, float scale)
 
 void poly_init()
 {
+	dot_triangulate(&square094, 0.94f * 1.414213562f); // √2
 	dot_triangulate(&polygon8, 0.90);
 }
 
