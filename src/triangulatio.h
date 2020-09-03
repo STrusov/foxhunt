@@ -9,10 +9,6 @@ struct triangle {
 	fast_index neighbor[3];
 };
 
-struct tri_index {
-	vert_index v[3];
-};
-
 static const float d_eps = 0;
 
 static inline

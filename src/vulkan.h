@@ -12,6 +12,8 @@
   #undef ENABLE_VK_VALIDATION
 #endif
 
+#include "draw.h"
+
 VkResult vk_init(void);
 void vk_stop(void);
 
@@ -25,17 +27,6 @@ void vk_window_destroy(void *vk_context);
 
 void vk_window_resize(void *vk_context, uint32_t width, uint32_t height);
 
-struct pos2d {
-	float	x;
-	float	y;
-};
-
-struct vec4 {
-	float	x;
-	float	y;
-	float	z;
-	float	w;
-};
 
 /// Редуцированная матрица трансформации \see shader.vert
 struct transform {
@@ -43,17 +34,6 @@ struct transform {
 	struct vec4 	translate;
 };
 
-struct color {
-	float	r;
-	float	g;
-	float	b;
-	float	a;
-};
-
-struct vertex {
-	struct vec4 	pos;
-	struct color	color;
-};
 
 /** Захватывает очередной кадр видеоряда, при необходимости инициализации */
 /** создаёт буфера кадра и команд для его построения.                     */
