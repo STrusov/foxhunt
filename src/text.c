@@ -150,10 +150,10 @@ void draw_text(const char *str, const struct polygon *poly, struct vec4 at,
 			for (int v = 2 * width[c]; v ; v -= 2) {
 				if (line & 1) {
 					const struct vec4 coord = {
-						.x = at.x + (x0 + v),
-						.y = at.y + (2 * l - glyph_height + 2),
-						.z = at.z,
-						.w = at.w * (2 * glyph_height),
+						.x = at.x * glyph_height + (x0 + v),
+						.y = at.y * glyph_height + (2 * l - glyph_height + 2),
+						.z = at.z * glyph_height,
+						.w = at.w * glyph_height,
 					};
 					poly_draw(poly, coord, painter, color, stage, ctx);
 				}

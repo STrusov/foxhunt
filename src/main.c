@@ -88,8 +88,6 @@ static void board_draw(int stage, struct draw_ctx *restrict ctx)
 			const struct board_cell *cell = board_at(xc, yc);
 			if (1 || cell->open > 0) {
 				char num[2] = { cell->fox_visible + '0', '\x00' };
-				at.x *= 2 * glyph_height;
-				at.y *= 2 * glyph_height;
 				draw_text(num, &polygon8, at, NULL, (struct color){ 0.95f, 0.2f, 0.2f, 0.95f },
 				          stage, ctx);
 			}
@@ -185,9 +183,9 @@ static bool draw_frame(void *p)
 		for (int s = 0; s < text_lines; ++s) {
 			const struct vec4 pos = {
 				.x = 0,
-				.y = 2 * (glyph_height + 1) * (s + 0.5f * (1 - text_lines)),
+				.y = 2.0f * (glyph_height + 1.0f)/glyph_height * (s + 0.5f * (1 - text_lines)),
 				.z = 0,
-				.w = 6,
+				.w = 12,
 			};
 			draw_text(text[s], &polygon8, pos, NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 },
 			          stage, &dc);
