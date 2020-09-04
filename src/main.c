@@ -170,27 +170,6 @@ static bool draw_frame(void *p)
 
 		board_draw(stage, &dc);
 
-		const char *text[] = {
-			"ОХОТА НА ЛИС",
-			"! \"#$%&'",
-			"()*+,-./",
-			"0123456789",
-			"АБВГДЕЖЗИЙ",
-			"КЛМНОПРСТУФХ",
-			"ЦЧШЩЪЫЬЭЮЯ",
-		};
-		const int text_lines = sizeof(text)/sizeof(*text);
-		for (int s = 0; s < text_lines; ++s) {
-			const struct vec4 pos = {
-				.x = 0,
-				.y = 2.0f * (glyph_height + 1.0f)/glyph_height * (s + 0.5f * (1 - text_lines)),
-				.z = 0,
-				.w = 12,
-			};
-			draw_text(text[s], &polygon8, pos, NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 },
-			          stage, &dc);
-		}
-
 		if (stage) {
 			assert(total_vertices == dc.vert_buf - vert_buf);
 			assert(total_indices  == dc.indx_buf - indx_buf);
