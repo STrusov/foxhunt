@@ -127,7 +127,6 @@ void draw_text(const char *str, const struct polygon *poly, struct vec4 at,
 			glidx[cnt] = *str - ' ';
 		}
 	}
-	assert(cnt);
 	unsigned popc = 0;
 	int line_width = 0;
 	for (int i = 0; i < cnt; ++i) {
