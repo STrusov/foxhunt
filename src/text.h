@@ -13,3 +13,7 @@ enum {
 void draw_text(const char *str, const struct polygon *poly, struct vec4 at,
                void(painter)(struct vertex*, struct color), struct color color,
                int stage, struct draw_ctx *restrict ctx);
+
+void text_lines(const char *text[], int lines, const struct polygon *poly, struct vec4 at,
+               void(painter)(struct vertex*, struct color), struct color color,
+               int stage, struct draw_ctx *restrict ctx);

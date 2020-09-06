@@ -164,4 +164,15 @@ void draw_text(const char *str, const struct polygon *poly, struct vec4 at,
 	}
 }
 
+void text_lines(const char *text[], int lines, const struct polygon *poly, struct vec4 at,
+               void(painter)(struct vertex*, struct color), struct color color,
+               int stage, struct draw_ctx *restrict ctx)
+{
+	assert(lines > 0);
+	for (int s = 0; s < lines; ++s) {
+		float dy = 2.0f * (glyph_height + 1.0f)/glyph_height * (s - 0.5f*(lines-1));
+		draw_text(text[s], &polygon8, (struct vec4){ at.x, at.y + dy, at.z, at.w },
+		          painter, color, stage, ctx);
+	}
+}
 

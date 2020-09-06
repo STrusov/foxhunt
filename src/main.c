@@ -26,6 +26,7 @@
 #include "triangulatio.h"
 
 const float aspect_ratio = 4.0/3.0;
+//const float aspect_ratio = 16.0/9.0;
 
 /*
  Изображение строится по однородным (гомогенным) координатам вершин (clip coordinate),
@@ -49,6 +50,14 @@ const float aspect_ratio = 4.0/3.0;
          (-w, w) +----------------+ (w, w)
 
 */
+
+static bool game;
+
+static char time[] = { '0', '0', ':', '0', '0', '\x00' };
+
+static char move[] = { '0', '0', '\x00' };
+
+static char foxc[] = { '0', '/', '0', '\x00' };
 
 enum {
 	board_size_max = 9,
@@ -93,6 +102,67 @@ static void board_draw(int stage, struct draw_ctx *restrict ctx)
 			}
 		}
 	}
+}
+
+static void rectangle(int stage, struct draw_ctx *restrict ctx,
+                      struct vec4 at, float hw, float hh, struct color color)
+{
+	if (stage) {
+		ctx->vert_buf[0].pos = (struct vec4){ at.x - hw, at.y + hh, at.z, at.w };
+		ctx->vert_buf[0].color = color;
+		ctx->vert_buf[1].pos = (struct vec4){ at.x - hw, at.y - hh, at.z, at.w };
+		ctx->vert_buf[1].color = color;
+		ctx->vert_buf[2].pos = (struct vec4){ at.x + hw, at.y - hh, at.z, at.w };
+		ctx->vert_buf[2].color = color;
+		ctx->vert_buf[3].pos = (struct vec4){ at.x + hw, at.y + hh, at.z, at.w };
+		ctx->vert_buf[3].color = color;
+		ctx->indx_buf[0] = ctx->base;
+		ctx->indx_buf[1] = ctx->base + 1;
+		ctx->indx_buf[2] = ctx->base + 2;
+		ctx->indx_buf[3] = ctx->base + 2;
+		ctx->indx_buf[4] = ctx->base + 3;
+		ctx->indx_buf[5] = ctx->base;
+		ctx->base += 4;
+	}
+	ctx->vert_buf += 4;
+	ctx->indx_buf += 6;
+}
+
+static void title(int stage, struct draw_ctx *restrict ctx, struct vec4 at)
+{
+	rectangle(stage, ctx, at, 4.5f, 2.5f, (struct color){ 0.05f, 0.05f, 0.05f, 0.8f });
+	static const char *text[] = {
+		"ОХОТА",
+		"НА ЛИС",
+	};
+	text_lines(text, sizeof(text)/sizeof(*text), &polygon8, at,
+	           NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 }, stage, ctx);
+}
+
+static void score(int stage, struct draw_ctx *restrict ctx, struct vec4 at)
+{
+	rectangle(stage, ctx, at, 4.3f, 7.5f, (struct color){ 0.05f, 0.05f, 0.05f, 0.8f });
+	static const char *text[][2] = {
+		{ "ВРЕМЯ", time },
+		{ "ХОДЫ",  move },
+		{ "ЛИСЫ",  foxc },
+	};
+	const int pairs = sizeof(text)/sizeof(*text);
+	for (int s = 0; s < pairs; ++s) {
+		const float dy = 5.0f * (s - 0.5f * (pairs-1));
+		text_lines(text[s], 2, &polygon8, (struct vec4){ at.x, at.y + dy, at.z, at.w },
+		           NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 }, stage, ctx);
+	}
+}
+
+static void menu(int stage, struct draw_ctx *restrict ctx, struct vec4 at)
+{
+	rectangle(stage, ctx, at, 4.5f, 2.8f, (struct color){ 0.05f, 0.05f, 0.05f, 0.8f });
+	const float dy = 1.5f;
+	draw_text(game ? "СТОП":"СТАРТ", &polygon8, (struct vec4){ at.x, at.y - dy, at.z, at.w },
+	          NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 }, stage, ctx);
+	draw_text("ВЫХОД", &polygon8, (struct vec4){ at.x, at.y + dy, at.z, at.w },
+	          NULL, (struct color){ 0.9, 0.0, 0.0, 0.9 }, stage, ctx);
 }
 
 static bool draw_frame(void *p)
@@ -169,6 +239,17 @@ static bool draw_frame(void *p)
 		}
 
 		board_draw(stage, &dc);
+
+		const float tw = 18.5f;
+		const float twa = tw / aspect_ratio;
+		title(stage, &dc, (struct vec4){ twa, -0.7f * twa, 0.0f, tw });
+
+		const float sw = 15.0f * aspect_ratio;
+		score(stage, &dc, (struct vec4){ sw/aspect_ratio, 0.05f * sw, 0.0f, sw });
+
+		const float mw = 21.0f * aspect_ratio;
+		const float mwa = mw / aspect_ratio;
+		menu(stage, &dc, (struct vec4){ mwa, 0.8f * mwa, 0.0f, mw });
 
 		if (stage) {
 			assert(total_vertices == dc.vert_buf - vert_buf);
