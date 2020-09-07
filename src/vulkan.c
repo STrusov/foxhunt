@@ -166,6 +166,24 @@ static VkResult create_surface(struct vk_context *vk, struct wl_display *display
 	return vkCreateWaylandSurfaceKHR(instance, &surfinfo, allocator, &vk->surface);
 }
 
+static const char *gpu_type[] = {
+	[VK_PHYSICAL_DEVICE_TYPE_OTHER]          = "",
+	[VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU] = "Интегрированный",
+	[VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU]   = "Дискретный",
+	[VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU]    = "Виртуальный",
+	[VK_PHYSICAL_DEVICE_TYPE_CPU]            = "Программный",
+};
+
+static void print_gpu_properties(VkPhysicalDevice gpu)
+{
+	struct VkPhysicalDeviceProperties gp;
+	vkGetPhysicalDeviceProperties(gpu, &gp);
+	printf("%s процессор Vulkan %u.%u.%u %s [%x:%x] v%x.\n",
+	       gpu_type[gp.deviceType], VK_VERSION_MAJOR(gp.apiVersion),
+	       VK_VERSION_MINOR(gp.apiVersion), VK_VERSION_PATCH(gp.apiVersion),
+	       gp.deviceName, gp.vendorID, gp.deviceID, gp.driverVersion);
+}
+
 /** Выбирает подходящий для работы с поверхностью графический процессор  */
 /*  и определяет семейства очередей для операций с графикой и её вывода. */
 static VkResult select_gpu(struct vk_context *vk)
@@ -206,6 +224,7 @@ static VkResult select_gpu(struct vk_context *vk)
 
 				if (gfx_q != inv && presentation != inv) {
 					vk->gpu = devs[d];
+					print_gpu_properties(vk->gpu);
 					break;
 				}
 			}
