@@ -134,6 +134,12 @@ struct vk_context {
 	VkPipelineLayout	pipeline_layout;
 };
 
+struct vk_buffer {
+	VkBuffer        buf;
+	VkDeviceMemory  mem;
+	VkDeviceSize    size;
+};
+
 /** Буфер кадра, проекция и команды построения изображения. */
 struct vk_frame {
 	VkImage         	img;
@@ -143,10 +149,8 @@ struct vk_frame {
 	VkImageView     	view;
 	VkCommandBuffer 	cmd;
 	VkFence         	pending;	///< готовность буфера команд.
-	VkBuffer        	vert_buf;
-	VkDeviceMemory  	vert_mem;
-	VkBuffer        	indx_buf;
-	VkDeviceMemory  	indx_mem;
+	struct vk_buffer	vert;
+	struct vk_buffer	indx;
 };
 
 /** Создаёт связанную с Воландом поверхность Вулкан. */
@@ -679,12 +683,13 @@ VkResult create_buffer(struct vk_context *vk, VkDeviceSize size,
 	};
 	VkResult r = vkCreateBuffer(vk->device, &buf_info, allocator, buffer);
 	if (r == VK_SUCCESS) {
-		printf("  Создаётся буфер (%#x):", usage);
+		printf("  Создаётся буфер (%#x) %lu байт:", usage, size);
 		struct VkMemoryRequirements req;
 		vkGetBufferMemoryRequirements(vk->device, *buffer, &req);
 		struct VkPhysicalDeviceMemoryProperties props;
 		vkGetPhysicalDeviceMemoryProperties(vk->gpu, &props);
 		for ( uint32_t i = 0; i < props.memoryTypeCount; ++i)
+			// Для memoryTypeBits гарантируется минимум 1 установленный бит.
 			if (req.memoryTypeBits & (1 << i) && flags == (props.memoryTypes[i].propertyFlags & flags)) {
 				const struct VkMemoryAllocateInfo alloc_info = {
 					.sType          	= VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
@@ -706,42 +711,53 @@ VkResult create_buffer(struct vk_context *vk, VkDeviceSize size,
 
 /** Подготавливает буфер для заполнения. */
 static inline
-VkResult begin_buffer(struct vk_context *vk, VkBuffer *buf, VkDeviceMemory *mem,
+VkResult begin_buffer(struct vk_context *vk, struct vk_buffer *buf,
                       VkDeviceSize size, VkBufferUsageFlags usage, void **dest)
 {
 	VkResult r = VK_SUCCESS;
-	if (*buf == VK_NULL_HANDLE)
+	if (buf->buf && buf->size < size) {
+		// TODO Ложное срабатывание валидатора, как и в прочих случаях?
+		vkWaitForFences(vk->device, 1, &vk->frame[vk->active].pending, VK_TRUE, 0);
+		vkFreeMemory(vk->device, buf->mem, allocator);
+		vkDestroyBuffer(vk->device, buf->buf, allocator);
+		buf->buf = VK_NULL_HANDLE;
+		buf->size = 0;
+	}
+	if (buf->buf == VK_NULL_HANDLE)
 		r = create_buffer(vk, size, usage,
 		                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-		                  buf, mem);
+		                  &buf->buf, &buf->mem);
 	*dest = NULL;
-	if (r == VK_SUCCESS)
-		r = vkMapMemory(vk->device, *mem, 0, size, 0, dest);
+	if (r == VK_SUCCESS) {
+		r = vkMapMemory(vk->device, buf->mem, 0, size, 0, dest);
+		if (buf->size < size)
+			buf->size = size;
+	}
 	return r;
 }
 
 VkResult vk_begin_vertex_buffer(struct vk_context *vk, VkDeviceSize size, struct vertex **dest)
 {
 	struct vk_frame *f = &vk->frame[vk->active];
-	return begin_buffer(vk, &f->vert_buf, &f->vert_mem, size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, (void**)dest);
+	return begin_buffer(vk, &f->vert, size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, (void**)dest);
 }
 
 void vk_end_vertex_buffer(struct vk_context *vk)
 {
 	// TODO vkFlushMappedMemoryRanges()
-	vkUnmapMemory(vk->device, vk->frame[vk->active].vert_mem);
+	vkUnmapMemory(vk->device, vk->frame[vk->active].vert.mem);
 }
 
 VkResult vk_begin_index_buffer(struct vk_context *vk, VkDeviceSize size, vert_index **dest)
 {
 	struct vk_frame *f = &vk->frame[vk->active];
-	return begin_buffer(vk, &f->indx_buf, &f->indx_mem, size, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, (void**)dest);
+	return begin_buffer(vk, &f->indx, size, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, (void**)dest);
 }
 
 void vk_end_index_buffer(struct vk_context *vk)
 {
 	// TODO vkFlushMappedMemoryRanges()
-	vkUnmapMemory(vk->device, vk->frame[vk->active].indx_mem);
+	vkUnmapMemory(vk->device, vk->frame[vk->active].indx.mem);
 }
 
 VkResult vk_acquire_frame(struct vk_context *vk)
@@ -898,20 +914,20 @@ void vk_cmd_push_transform(struct vk_context *vk, const struct transform *tf)
 
 void vk_cmd_draw_vertices(struct vk_context *vk, uint32_t count, uint32_t first)
 {
-	vkCmdBindVertexBuffers(vk->frame[vk->active].cmd, 0, 1, &vk->frame[vk->active].vert_buf, &(VkDeviceSize){0});
+	vkCmdBindVertexBuffers(vk->frame[vk->active].cmd, 0, 1, &vk->frame[vk->active].vert.buf, &(VkDeviceSize){0});
 	vkCmdDraw(vk->frame[vk->active].cmd, count, 1, first, 0);
 }
 
 void vk_cmd_draw_indexed(struct vk_context *vk, uint32_t count)
 {
-	vkCmdBindVertexBuffers(vk->frame[vk->active].cmd, 0, 1, &vk->frame[vk->active].vert_buf, &(VkDeviceSize){0});
+	vkCmdBindVertexBuffers(vk->frame[vk->active].cmd, 0, 1, &vk->frame[vk->active].vert.buf, &(VkDeviceSize){0});
 	VkIndexType index_type;
 	switch (sizeof(vert_index)) {
 		default: assert(0);
 		case sizeof(uint16_t): index_type = VK_INDEX_TYPE_UINT16; break;
 		case sizeof(uint32_t): index_type = VK_INDEX_TYPE_UINT32; break;
 	}
-	vkCmdBindIndexBuffer(vk->frame[vk->active].cmd, vk->frame[vk->active].indx_buf, 0, index_type);
+	vkCmdBindIndexBuffer(vk->frame[vk->active].cmd, vk->frame[vk->active].indx.buf, 0, index_type);
 	vkCmdDrawIndexed(vk->frame[vk->active].cmd, count, 1, 0, 0, 0);
 }
 
@@ -973,10 +989,10 @@ void vk_window_destroy(void *vk_context)
 		vkFreeCommandBuffers(vk->device, vk->command_pool, 1, &vk->frame[vk->count].cmd);
 		vkDestroyFramebuffer(vk->device, vk->frame[vk->count].fb, allocator);
 		vkDestroyImageView(vk->device, vk->frame[vk->count].view, allocator);
-		vkFreeMemory(vk->device, vk->frame[vk->count].vert_mem, allocator);
-		vkDestroyBuffer(vk->device, vk->frame[vk->count].vert_buf, allocator);
-		vkFreeMemory(vk->device, vk->frame[vk->count].indx_mem, allocator);
-		vkDestroyBuffer(vk->device, vk->frame[vk->count].indx_buf, allocator);
+		vkFreeMemory(vk->device, vk->frame[vk->count].vert.mem, allocator);
+		vkDestroyBuffer(vk->device, vk->frame[vk->count].vert.buf, allocator);
+		vkFreeMemory(vk->device, vk->frame[vk->count].indx.mem, allocator);
+		vkDestroyBuffer(vk->device, vk->frame[vk->count].indx.buf, allocator);
 	} while (vk->count--);
 	free(vk->acq_pool);
 	free(vk->frame);
