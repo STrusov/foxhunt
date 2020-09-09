@@ -15,6 +15,7 @@
  * https://github.com/Overv/VulkanTutorial/graphs/contributors
  *
  */
+#include <time.h>
 
 #include "ay_music.h"
 #include "vulkan.h"
@@ -51,9 +52,9 @@ const float aspect_ratio = 4.0/3.0;
 
 */
 
-static bool game;
+static struct timespec start_time;
 
-static char time[] = { '0', '0', ':', '0', '0', '\x00' };
+static bool game_started;
 
 static char move[] = { '0', '0', '\x00' };
 
@@ -139,11 +140,40 @@ static void title(int stage, struct draw_ctx *restrict ctx, struct vec4 at)
 	           NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 }, stage, ctx);
 }
 
+struct timespec time_from_start(void)
+{
+	struct timespec now;
+	int r = timespec_get(&now, TIME_UTC);
+	assert(r == TIME_UTC);
+	const bool carry = now.tv_nsec < start_time.tv_nsec;
+	return (struct timespec) {
+		.tv_sec  = now.tv_sec  - start_time.tv_sec - carry,
+		.tv_nsec = now.tv_nsec - start_time.tv_nsec + (carry ? 1000000000 : 0),
+	};
+}
+
 static void score(int stage, struct draw_ctx *restrict ctx, struct vec4 at)
 {
 	rectangle(stage, ctx, at, 4.3f, 7.5f, (struct color){ 0.05f, 0.05f, 0.05f, 0.8f });
+
+	// Строку со временем формируем на первом этапе.
+	static char playtime[6];
+	if (!stage) {
+		const struct timespec pt = time_from_start();
+		time_t m = pt.tv_sec / 60;
+		long   s = pt.tv_sec % 60;
+		if (m > 99 || m < 0)
+			m = s = 99;
+		playtime[0] = '0' + m / 10;
+		playtime[1] = '0' + m % 10;
+		playtime[2] = pt.tv_nsec < 1000000000/2 ? ':' : '\x01';
+		playtime[3] = '0' + s / 10;
+		playtime[4] = '0' + s % 10;
+		playtime[5] = '\x0';
+	}
+
 	static const char *text[][2] = {
-		{ "ВРЕМЯ", time },
+		{ "ВРЕМЯ", playtime },
 		{ "ХОДЫ",  move },
 		{ "ЛИСЫ",  foxc },
 	};
@@ -159,11 +189,17 @@ static void menu(int stage, struct draw_ctx *restrict ctx, struct vec4 at)
 {
 	rectangle(stage, ctx, at, 4.5f, 2.8f, (struct color){ 0.05f, 0.05f, 0.05f, 0.8f });
 	const float dy = 1.5f;
-	draw_text(game ? "СТОП":"СТАРТ", &polygon8, (struct vec4){ at.x, at.y - dy, at.z, at.w },
+	draw_text(game_started ? "СТОП":"СТАРТ", &polygon8, (struct vec4){ at.x, at.y - dy, at.z, at.w },
 	          NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 }, stage, ctx);
 	draw_text("ВЫХОД", &polygon8, (struct vec4){ at.x, at.y + dy, at.z, at.w },
 	          NULL, (struct color){ 0.9, 0.0, 0.0, 0.9 }, stage, ctx);
 }
+
+static void start_game(void)
+{
+	timespec_get(&start_time, TIME_UTC);
+}
+
 
 static bool draw_frame(void *p)
 {
@@ -294,6 +330,8 @@ int main(int argc, char *argv[])
 		return 2;
 
 	poly_init();
+
+	start_game();
 
 	struct window window = {
 		.render	= &vulkan,
