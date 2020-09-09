@@ -117,24 +117,28 @@ void draw_text(const char *str, const struct polygon *poly, struct vec4 at,
 	// Предварительно подготавливаем индексы в массиве font и ширину глифов.
 	unsigned glidx[32] = {};
 	unsigned width[32];
+	unsigned popc = 0;
+	int line_width = 0;
 	for (cnt = 0; *str; ++str, ++cnt) {
+		assert(cnt <= 32);
 		// Юникод диапазон А..Я в UTF-8 кодируется 0xd0 0x90 .. 0xd0 0xaf
 		if (*str == (char)0xd0) {
 			char c2 = 0x7f & *++str;
 			assert(c2 >= 0x10 && c2 <= 0x2f);
 			glidx[cnt] = glyph_cyrillic + c2 - 0x10;
-		} else {
+		} else if (*str >= ' ') {
 			glidx[cnt] = *str - ' ';
-		}
-	}
-	unsigned popc = 0;
-	int line_width = 0;
-	for (int i = 0; i < cnt; ++i) {
-		if (stage) {
-			width[i] = glyphwidth(glidx[i]);
-			line_width += width[i] + 1; // межсимвольный интервал.
 		} else {
-			popc += glyphpopc(glidx[i]);
+			glidx[cnt] = ' ' - ' ';
+			width[cnt] = *str;
+			goto calc_line_width;
+		}
+		if (stage) {
+			width[cnt] = glyphwidth(glidx[cnt]);
+calc_line_width:
+			line_width += width[cnt] + 1; // межсимвольный интервал.
+		} else {
+			popc += glyphpopc(glidx[cnt]);
 		}
 	}
 	if (!stage) {
