@@ -3,6 +3,7 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,6 +13,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
+#include <wayland-cursor.h>
 #include "xdg-shell-client-protocol.h"
 
 #include "wayland_window.h"
@@ -53,6 +55,11 @@ const char                 	*seat_name;
  * Указательное устройство (мышь).
  */
 static struct wl_pointer   	*pointer;
+
+/**
+ * Набор курсоров.
+ */
+struct wl_cursor_theme     	*cursor_theme;
 
 
 /**
@@ -132,6 +139,59 @@ struct seat_ctx {
 
 static struct seat_ctx seat_ctx;
 
+static void load_cursors()
+{
+	if (cursor_theme)
+		return;
+	// TODO Для wayland с типовым размером 32 курсоры получаются больше.
+	int size = 24;
+	const char *size_str = getenv("XCURSOR_SIZE");
+	if (size_str) {
+		char *tail;
+		long s = strtol(size_str, &tail, 0);
+		// errno не проверяем, поскольку при переполнении значение >= INT_MAX.
+		if (!*tail && s > 0 && s < INT_MAX)
+			size = (int)s;
+	}
+	// TODO Если вместо имени темы передать NULL, используется тема по умолчанию.
+	// Реализация wayland 1.18.0 ищет в /usr/share/cursors/xorg-x11/default
+	// Если указанный каталог отсутствует, курсоры формируются из встроенных
+	// в библиотеку данных. Доступны следующие:
+	// "bottom_left_corner", "bottom_right_corner", "bottom_side", "grabbing",
+	// "left_ptr", "left_side", "right_side", "top_left_corner", "top_right_corner",
+	// "top_side", "xterm", "hand1", "watch".
+	cursor_theme = wl_cursor_theme_load(getenv("XCURSOR_THEME"), size, shared_mem);
+}
+
+///\name указатель на _статически_ аллоцированную строку (сохраняется без strdup).
+static bool set_cursor(struct seat_ctx *sx, const char *name)
+{
+	assert(name);
+	struct window *window = sx->pointer_focus;
+//	if (window->cursor_name && !strcmp(name, window->cursor_name))
+	if (name == window->cursor_name)
+		return true;
+	struct wl_cursor *cursor = wl_cursor_theme_get_cursor(cursor_theme, name);
+	if (cursor) {
+		struct wl_cursor_image *image = cursor->images[0];
+		struct wl_buffer *buffer = wl_cursor_image_get_buffer(image);
+		if (buffer) {
+			if (!window->cursor)
+				window->cursor = wl_compositor_create_surface(compositor);
+			if (window->cursor) {
+				wl_pointer_set_cursor(pointer, sx->pointer_serial, window->cursor,
+				                      image->hotspot_x, image->hotspot_y);
+				wl_surface_attach(window->cursor, buffer, 0, 0);
+				wl_surface_damage(window->cursor, 0, 0, image->width, image->height);
+				wl_surface_commit(window->cursor);
+				window->cursor_name = name;
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 /** Указатель появился над поверхностью. */
 static void on_pointer_enter(void *p, struct wl_pointer *pointer, uint32_t serial,
                              struct wl_surface *surface, wl_fixed_t x, wl_fixed_t y)
@@ -152,6 +212,7 @@ static void on_pointer_leave(void *p, struct wl_pointer *pointer, uint32_t seria
 	struct seat_ctx *inp = p;
 	struct window *window = wl_surface_get_user_data(surface);
 	assert(window == inp->pointer_focus);
+	inp->pointer_focus->cursor_name = NULL;
 	inp->pointer_focus  = NULL;
 	inp->pointer_serial = serial;
 	inp->pointer_event |= pointer_leave;
@@ -223,9 +284,9 @@ static void on_pointer_axis_discrete(void *p, struct wl_pointer *pointer,
 	inp->pointer_event |= pointer_axis_discrete;
 }
 
-static uint32_t resize_edge(struct window *window, int x, int y)
+static enum xdg_toplevel_resize_edge resize_edge(struct window *window, int x, int y)
 {
-	uint32_t resize = XDG_TOPLEVEL_RESIZE_EDGE_NONE;
+	enum xdg_toplevel_resize_edge resize = XDG_TOPLEVEL_RESIZE_EDGE_NONE;
 	if (x < window->border) {
 		resize = XDG_TOPLEVEL_RESIZE_EDGE_LEFT;
 	} else if (x >= window->width - window->border) {
@@ -269,13 +330,54 @@ static void on_pointer_frame(void *p, struct wl_pointer *pointer)
 	const int x = wl_fixed_to_int(inp->pointer_x);
 	const int y = wl_fixed_to_int(inp->pointer_y);
 
+	if (pointer_enter & inp->pointer_event) {
+		load_cursors();
+	}
+
+	enum xdg_toplevel_resize_edge resize = XDG_TOPLEVEL_RESIZE_EDGE_NONE;
+	// При pointer_leave window == NULL
+	if ((pointer_motion | pointer_button) & inp->pointer_event) {
+		if (window->render->resize)
+			resize = resize_edge(window, x, y);
+	}
+
+	if (pointer_motion & inp->pointer_event) {
+		const char *cursor_name = "left_ptr";
+		switch (resize) {
+		case XDG_TOPLEVEL_RESIZE_EDGE_NONE:
+			break;
+		case XDG_TOPLEVEL_RESIZE_EDGE_TOP:
+			cursor_name = "top_side";
+			break;
+		case XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM:
+			cursor_name = "bottom_side";
+			break;
+		case XDG_TOPLEVEL_RESIZE_EDGE_LEFT:
+			cursor_name = "left_side";
+			break;
+		case XDG_TOPLEVEL_RESIZE_EDGE_TOP_LEFT:
+			cursor_name = "top_left_corner";
+			break;
+		case XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_LEFT:
+			cursor_name = "bottom_left_corner";
+			break;
+		case XDG_TOPLEVEL_RESIZE_EDGE_RIGHT:
+			cursor_name = "right_side";
+			break;
+		case XDG_TOPLEVEL_RESIZE_EDGE_TOP_RIGHT:
+			cursor_name = "top_right_corner";
+			break;
+		case XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_RIGHT:
+			cursor_name = "bottom_right_corner";
+			break;
+		}
+		const bool cursor_selected = set_cursor(inp, cursor_name);
+		assert(cursor_selected);
+	}
+
 	// По щелчку у кромки изменяем размер окна, если позволено.
 	// Если щелчёк не обработан, двигаем окно.
 	if (pointer_button & inp->pointer_event) {
-		uint32_t resize = XDG_TOPLEVEL_RESIZE_EDGE_NONE;
-		if (window->render->resize) {
-			resize = resize_edge(window, x, y);
-		}
 		if (resize != XDG_TOPLEVEL_RESIZE_EDGE_NONE) {
 			xdg_toplevel_resize(window->toplevel, seat, inp->pointer_serial, resize);
 		} else {
@@ -351,6 +453,10 @@ bool wayland_init(void)
 void wayland_stop(void)
 {
 	// TODO on_global_remove()
+	if (cursor_theme) {
+		wl_cursor_theme_destroy(cursor_theme);
+		cursor_theme = NULL;
+	}
 	if (seat) {
 		wl_seat_destroy(seat);
 		free((char*)seat_name);
@@ -550,6 +656,8 @@ void window_destroy(struct window *window)
 	if (window->render->destroy)
 		window->render->destroy(window->render_ctx);
 
+	if (window->cursor)
+		wl_surface_destroy(window->cursor);
 	xdg_toplevel_destroy(window->toplevel);
 	xdg_surface_destroy(window->xdg_surface);
 	wl_surface_destroy(window->wl_surface);

@@ -28,6 +28,10 @@ struct window {
 	struct xdg_surface  	*xdg_surface;
 	/** Роль поверхности - главное окно     */
 	struct xdg_toplevel 	*toplevel;
+	/** Текущее изображение курсора         */
+	struct wl_surface   	*cursor;
+	/** Имя текущего курсора                */
+	const char          	*cursor_name;
 
 	bool                	pending_configure;
 	bool                	pending_resize;

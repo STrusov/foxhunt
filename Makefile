@@ -5,7 +5,7 @@ HEADERS := $(wildcard src/*.h)
 SOURCES := $(wildcard src/*.c)
 SHADERS := src/shader.frag src/shader.vert
 MUSICS  := $(wildcard music/*.cps)
-LIBS    := alsa vulkan wayland-client
+LIBS    := alsa vulkan wayland-client wayland-cursor
 CFLAGS  := -std=c18 -Wall
 LDFLAGS := -lm -pthread
 CC ?= cc
