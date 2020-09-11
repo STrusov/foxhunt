@@ -212,8 +212,6 @@ static void on_pointer_leave(void *p, struct wl_pointer *pointer, uint32_t seria
 	struct seat_ctx *inp = p;
 	struct window *window = wl_surface_get_user_data(surface);
 	assert(window == inp->pointer_focus);
-	inp->pointer_focus->cursor_name = NULL;
-	inp->pointer_focus  = NULL;
 	inp->pointer_serial = serial;
 	inp->pointer_event |= pointer_leave;
 }
@@ -342,7 +340,7 @@ static void on_pointer_frame(void *p, struct wl_pointer *pointer)
 	}
 
 	if (pointer_motion & inp->pointer_event) {
-		const char *cursor_name = "left_ptr";
+		const char *cursor_name = NULL;
 		switch (resize) {
 		case XDG_TOPLEVEL_RESIZE_EDGE_NONE:
 			break;
@@ -371,6 +369,12 @@ static void on_pointer_frame(void *p, struct wl_pointer *pointer)
 			cursor_name = "bottom_right_corner";
 			break;
 		}
+		if (!cursor_name && window->ctrl && window->ctrl->hover)
+			cursor_name = window->ctrl->hover(window,
+			                                  wl_fixed_to_double(inp->pointer_x),
+			                                  wl_fixed_to_double(inp->pointer_y));
+		if (!cursor_name)
+			cursor_name = "grabbing";
 		const bool cursor_selected = set_cursor(inp, cursor_name);
 		assert(cursor_selected);
 	}
@@ -383,6 +387,13 @@ static void on_pointer_frame(void *p, struct wl_pointer *pointer)
 		} else {
 			xdg_toplevel_move(window->toplevel, seat, inp->pointer_serial);
 		}
+	}
+
+	if (pointer_leave & inp->pointer_event) {
+		if (window->ctrl && window->ctrl->hover)
+			window->ctrl->hover(window, -1.0, -1.0);
+		inp->pointer_focus->cursor_name = NULL;
+		inp->pointer_focus = NULL;
 	}
 
 	inp->pointer_event = 0;

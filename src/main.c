@@ -185,12 +185,44 @@ static void score(int stage, struct draw_ctx *restrict ctx, struct vec4 at)
 	}
 }
 
+struct area {
+	float	left;
+	float	right;
+	float	top;
+	float	bottom;
+};
+
+static inline
+void area_set(struct area *aa, struct vec4 at, float hw, float hh)
+{
+	aa->left   = (at.x - hw) / at.w;
+	aa->right  = (at.x + hw) / at.w;
+	aa->top    = (at.y - hh) / at.w;
+	aa->bottom = (at.y + hh) / at.w;
+}
+
+static inline bool area_over(struct area *aa, float x, float y)
+{
+	return aa->left < x && x < aa->right && aa->top < y && y < aa->bottom;
+}
+
+static struct area button_start, button_exit;
+bool button_start_over, button_exit_over;
+
 static void menu(int stage, struct draw_ctx *restrict ctx, struct vec4 at)
 {
 	rectangle(stage, ctx, at, 4.5f, 2.8f, (struct color){ 0.05f, 0.05f, 0.05f, 0.8f });
 	const float dy = 1.5f;
+
+	area_set(&button_start, (struct vec4){ at.x, at.y - dy, at.z, at.w }, 4.3f, 1.1f);
+	if (button_start_over)
+		rectangle(stage, ctx, (struct vec4){ at.x, at.y - dy, at.z, at.w }, 4.3f, 1.1f, (struct color){ 0.5f, 0.5f, 0.5f, 0.8f });
 	draw_text(game_started ? "СТОП":"СТАРТ", &polygon8, (struct vec4){ at.x, at.y - dy, at.z, at.w },
 	          NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 }, stage, ctx);
+
+	area_set(&button_exit, (struct vec4){ at.x, at.y + dy, at.z, at.w }, 4.3f, 1.1f);
+	if (button_exit_over)
+		rectangle(stage, ctx, (struct vec4){ at.x, at.y + dy, at.z, at.w }, 4.3f, 1.1f, (struct color){ 0.5f, 0.5f, 0.5f, 0.8f });
 	draw_text("ВЫХОД", &polygon8, (struct vec4){ at.x, at.y + dy, at.z, at.w },
 	          NULL, (struct color){ 0.9, 0.0, 0.0, 0.9 }, stage, ctx);
 }
@@ -311,11 +343,41 @@ static bool draw_frame(void *p)
 	return (r == VK_SUCCESS);
 }
 
+static const char* pointer_over(const struct window *window, double x, double y)
+{
+	if (x >= 0) {
+		float xh = (2.0 * x / window->width) - 1.0;
+		float yh = ((2.0 * y / window->height) - 1.0) / window->aspect_ratio;
+
+		if (xh < 2.0f / window->aspect_ratio - 1.0f) {
+			goto over;
+		}
+
+		if (area_over(&button_start, xh, yh)) {
+			button_start_over = true;
+			goto over;
+		}
+		if (area_over(&button_exit, xh, yh)) {
+			button_exit_over = true;
+			goto over;
+		}
+	}
+	button_start_over = false;
+	button_exit_over  = false;
+	return NULL;
+over:
+	return "left_ptr";
+}
+
 static const struct render vulkan = {
 	.create    	= vk_window_create,
 	.destroy   	= vk_window_destroy,
 	.draw_frame	= draw_frame,
 	.resize    	= vk_window_resize,
+};
+
+static const struct controller controller = {
+	.hover  	= pointer_over,
 };
 
 int main(int argc, char *argv[])
@@ -334,6 +396,7 @@ int main(int argc, char *argv[])
 	start_game();
 
 	struct window window = {
+		.ctrl 	= &controller,
 		.render	= &vulkan,
 		.title	= "Окно",
 		.width	= 800,

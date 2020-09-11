@@ -5,6 +5,8 @@
 #include <wayland-client.h>
 
 struct window {
+	/** таблица функций интерфейса управления   */
+	const struct controller	*ctrl;
 	/** Таблица функций построителя изображений */
 	const struct render 	*render;
 	/** Заголовок окна                      */
@@ -49,6 +51,12 @@ struct render {
 	bool (*draw_frame)(void *render_ctx);
 	/** Изменяет размер окна.    */
 	void (*resize)(void *render_ctx, uint32_t width, uint32_t height);
+};
+
+/** Интерфейс взаимодействия с устройствами ввода */
+struct controller {
+	/** Указатель над окном. Выход за пределы сигнализируется отрицательной координатой. */
+	const char* (*hover)(const struct window *window, double x, double y);
 };
 
 /** Инициализирует сеанс и интерфейсы для связи с сервером. */
