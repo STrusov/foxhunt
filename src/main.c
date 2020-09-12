@@ -343,14 +343,17 @@ static bool draw_frame(void *p)
 	return (r == VK_SUCCESS);
 }
 
-static const char* pointer_over(const struct window *window, double x, double y)
+static
+void pointer_over(const struct window *window, double x, double y, const char **cursor_name)
 {
+	button_start_over = false;
+	button_exit_over  = false;
 	if (x >= 0) {
 		float xh = (2.0 * x / window->width) - 1.0;
 		float yh = ((2.0 * y / window->height) - 1.0) / window->aspect_ratio;
 
 		if (xh < 2.0f / window->aspect_ratio - 1.0f) {
-			goto over;
+			goto none;
 		}
 
 		if (area_over(&button_start, xh, yh)) {
@@ -362,11 +365,13 @@ static const char* pointer_over(const struct window *window, double x, double y)
 			goto over;
 		}
 	}
-	button_start_over = false;
-	button_exit_over  = false;
-	return NULL;
+	return;
+none:
+	*cursor_name = NULL;
+	return;
 over:
-	return "left_ptr";
+	*cursor_name = "left_ptr";
+	return;
 }
 
 static const struct render vulkan = {

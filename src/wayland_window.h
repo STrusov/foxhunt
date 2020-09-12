@@ -56,7 +56,7 @@ struct render {
 /** Интерфейс взаимодействия с устройствами ввода */
 struct controller {
 	/** Указатель над окном. Выход за пределы сигнализируется отрицательной координатой. */
-	const char* (*hover)(const struct window *window, double x, double y);
+	void (*hover)(const struct window *window, double x, double y, const char **cursor_name);
 };
 
 /** Инициализирует сеанс и интерфейсы для связи с сервером. */

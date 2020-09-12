@@ -163,33 +163,44 @@ static void load_cursors()
 	cursor_theme = wl_cursor_theme_load(getenv("XCURSOR_THEME"), size, shared_mem);
 }
 
-///\name указатель на _статически_ аллоцированную строку (сохраняется без strdup).
+///\name указатель на _статически_ аллоцированную строку (сохраняется без strdup)
+///      либо NULL — для скрытия курсора.
 static bool set_cursor(struct seat_ctx *sx, const char *name)
 {
-	assert(name);
+	// window->cursor_name используется для кеширования и значение NULL
+	// сигнализирует, что курсор для окна не определён (например, потеря фокуса).
+	// Равный NULL параметр name указывает, что курсор должен быть установлен
+	// невидимым. Что бы различать эти два случая, для скрытого курсора
+	// приравниваем указатель фиктивному имени.
+	static const char empty[0] = {};
+	if (!name)
+		name = empty;
 	struct window *window = sx->pointer_focus;
-//	if (window->cursor_name && !strcmp(name, window->cursor_name))
-	if (name == window->cursor_name)
-		return true;
-	struct wl_cursor *cursor = wl_cursor_theme_get_cursor(cursor_theme, name);
-	if (cursor) {
-		struct wl_cursor_image *image = cursor->images[0];
-		struct wl_buffer *buffer = wl_cursor_image_get_buffer(image);
-		if (buffer) {
+	// if (name && window->cursor_name && strcmp(name, window->cursor_name))
+	if (name != window->cursor_name) {
+		if (name != empty) {
+			struct wl_cursor *cursor = wl_cursor_theme_get_cursor(cursor_theme, name);
+			if (!cursor)
+				return false;
+			struct wl_cursor_image *image = cursor->images[0];
+			struct wl_buffer *buffer = wl_cursor_image_get_buffer(image);
+			if (!buffer)
+				return false;
 			if (!window->cursor)
 				window->cursor = wl_compositor_create_surface(compositor);
-			if (window->cursor) {
-				wl_pointer_set_cursor(pointer, sx->pointer_serial, window->cursor,
-				                      image->hotspot_x, image->hotspot_y);
-				wl_surface_attach(window->cursor, buffer, 0, 0);
-				wl_surface_damage(window->cursor, 0, 0, image->width, image->height);
-				wl_surface_commit(window->cursor);
-				window->cursor_name = name;
-				return true;
-			}
+			if (!window->cursor)
+				return false;
+			wl_pointer_set_cursor(pointer, sx->pointer_serial, window->cursor,
+			                      image->hotspot_x, image->hotspot_y);
+			wl_surface_attach(window->cursor, buffer, 0, 0);
+			wl_surface_damage(window->cursor, 0, 0, image->width, image->height);
+			wl_surface_commit(window->cursor);
+		} else {
+			wl_pointer_set_cursor(pointer, sx->pointer_serial, NULL, 0, 0);
 		}
+		window->cursor_name = name;
 	}
-	return false;
+	return true;
 }
 
 /** Указатель появился над поверхностью. */
@@ -340,9 +351,12 @@ static void on_pointer_frame(void *p, struct wl_pointer *pointer)
 	}
 
 	if (pointer_motion & inp->pointer_event) {
-		const char *cursor_name = NULL;
+		const char *cursor_name = "hand1";
 		switch (resize) {
 		case XDG_TOPLEVEL_RESIZE_EDGE_NONE:
+			if (window->ctrl && window->ctrl->hover)
+				window->ctrl->hover(window, wl_fixed_to_double(inp->pointer_x),
+				                    wl_fixed_to_double(inp->pointer_y), &cursor_name);
 			break;
 		case XDG_TOPLEVEL_RESIZE_EDGE_TOP:
 			cursor_name = "top_side";
@@ -369,12 +383,6 @@ static void on_pointer_frame(void *p, struct wl_pointer *pointer)
 			cursor_name = "bottom_right_corner";
 			break;
 		}
-		if (!cursor_name && window->ctrl && window->ctrl->hover)
-			cursor_name = window->ctrl->hover(window,
-			                                  wl_fixed_to_double(inp->pointer_x),
-			                                  wl_fixed_to_double(inp->pointer_y));
-		if (!cursor_name)
-			cursor_name = "grabbing";
 		const bool cursor_selected = set_cursor(inp, cursor_name);
 		assert(cursor_selected);
 	}
@@ -391,7 +399,7 @@ static void on_pointer_frame(void *p, struct wl_pointer *pointer)
 
 	if (pointer_leave & inp->pointer_event) {
 		if (window->ctrl && window->ctrl->hover)
-			window->ctrl->hover(window, -1.0, -1.0);
+			window->ctrl->hover(window, -1.0, -1.0, NULL);
 		inp->pointer_focus->cursor_name = NULL;
 		inp->pointer_focus = NULL;
 	}
