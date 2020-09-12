@@ -350,7 +350,7 @@ static void on_pointer_frame(void *p, struct wl_pointer *pointer)
 			resize = resize_edge(window, x, y);
 	}
 
-	if (pointer_motion & inp->pointer_event) {
+	if ((pointer_enter | pointer_motion) & inp->pointer_event) {
 		const char *cursor_name = "hand1";
 		switch (resize) {
 		case XDG_TOPLEVEL_RESIZE_EDGE_NONE:
