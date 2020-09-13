@@ -340,6 +340,15 @@ static void on_pointer_frame(void *p, struct wl_pointer *pointer)
 	const int x = wl_fixed_to_int(inp->pointer_x);
 	const int y = wl_fixed_to_int(inp->pointer_y);
 
+#if 1
+	// TODO несмотря на определение координат как surface-local, на деле
+	// при зажатой кнопке (в mutter 3.36) приходят выходящие за пределы значения.
+	if (x < 0 || y < 0 || x > window->width || y > window->height) {
+		set_cursor(inp, "left_ptr");
+		goto leave;
+	}
+#endif
+
 	if (pointer_enter & inp->pointer_event) {
 		load_cursors();
 	}
@@ -413,6 +422,7 @@ static void on_pointer_frame(void *p, struct wl_pointer *pointer)
 		}
 	}
 
+leave:
 	if (pointer_leave & inp->pointer_event) {
 		if (window->ctrl && window->ctrl->hover)
 			window->ctrl->hover(window, -1.0, -1.0, NULL);
