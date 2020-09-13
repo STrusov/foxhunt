@@ -370,7 +370,7 @@ static bool draw_frame(void *p)
 	return (r == VK_SUCCESS);
 }
 
-static bool pointer_click(const struct window *window, double x, double y,
+static bool pointer_click(struct window *window, double x, double y,
                           const char **cursor_name, uint32_t button, uint32_t state)
 {
 	button_start_over = false;
@@ -388,9 +388,20 @@ static bool pointer_click(const struct window *window, double x, double y,
 			button_start_over = true;
 			goto over;
 		}
+		// Выход по отпусканию кнопки.
+		// Отменяется при выходе указателя с зажатой клавишей за пределы кнопки.
+		static bool button_exit_pressed;
 		if (area_over(&button_exit, xh, yh)) {
-			button_exit_over = true;
+			if (button) {
+				if (state)
+					button_exit_pressed = true;
+				else
+					window->close = true;
+			} else if (!button_exit_pressed)
+				button_exit_over = true;
 			goto over;
+		} else {
+			button_exit_pressed = false;
 		}
 	}
 	return false;
@@ -400,7 +411,7 @@ over:
 }
 
 static
-void pointer_over(const struct window *window, double x, double y, const char **cursor_name)
+void pointer_over(struct window *window, double x, double y, const char **cursor_name)
 {
 	pointer_click(window, x, y, cursor_name, 0, 0);
 }
