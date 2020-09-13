@@ -15,6 +15,7 @@
  * https://github.com/Overv/VulkanTutorial/graphs/contributors
  *
  */
+#include <limits.h>
 #include <time.h>
 
 #include "ay_music.h"
@@ -66,6 +67,9 @@ enum {
 
 static int board_size = 9;
 
+static int board_cell_x = -1;
+static int board_cell_y = -1;
+
 struct board_cell {
 	int	fox_here;
 	int	fox_visible;
@@ -77,6 +81,28 @@ static struct board_cell board[board_size_max*board_size_max];
 static struct board_cell* board_at(int x, int y)
 {
 	return &board[x + y * board_size];
+}
+
+static bool board_over(float x, float y, uint32_t button, uint32_t state)
+{
+	// Делитель здесь и в вычислениях x100 y100 после скобок — размер стороны
+	// игрового поля, равный меньшей стороне окна. Соответствует aspect_ratio.
+	if (x >= 2.0f / aspect_ratio - 1.0f)
+		return false;
+
+	int x100 = 100 * (x + 1.0f) / aspect_ratio * (board_size - 1);
+	int y100 = 100 * (y + 1.0f/aspect_ratio ) / aspect_ratio * (board_size - 1);
+	if (x100 % 100 > 4 && x100 % 100 < 97)
+		board_cell_x = x100 / 100;
+	if (y100 % 100 > 4 && y100 % 100 < 97)
+		board_cell_y = y100 / 100;
+
+	if (button && state && board_cell_x >= 0 && board_cell_y >= 0) {
+		struct board_cell *cell = board_at(board_cell_x, board_cell_y);
+		if (cell->open < INT_MAX)
+			++cell->open;
+	}
+	return true;
 }
 
 static void board_draw(int stage, struct draw_ctx *restrict ctx)
@@ -92,11 +118,12 @@ static void board_draw(int stage, struct draw_ctx *restrict ctx)
 				.z = 0,
 				.w = board_size * aspect_ratio,
 			};
-			poly_draw(&square094, at,
-			          NULL, (struct color){ 0.5f, 0.4f, 0.1f, 0.5f },
-			          stage, ctx);
+			bool hover = xc == board_cell_x && yc == board_cell_y;
+			const struct color cc = hover ? (struct color){ 0.5f, 0.5f, 0.5f, 0.5f }
+			                              : (struct color){ 0.5f, 0.4f, 0.1f, 0.5f };
+			poly_draw(&square094, at, NULL, cc, stage, ctx);
 			const struct board_cell *cell = board_at(xc, yc);
-			if (1 || cell->open > 0) {
+			if (cell->open > 0) {
 				char num[2] = { cell->fox_visible + '0', '\x00' };
 				draw_text(num, &polygon8, at, NULL, (struct color){ 0.95f, 0.2f, 0.2f, 0.95f },
 				          stage, ctx);
@@ -348,14 +375,15 @@ static bool pointer_click(const struct window *window, double x, double y,
 {
 	button_start_over = false;
 	button_exit_over  = false;
+	board_cell_x = -1;
+	board_cell_y = -1;
 	if (x >= 0) {
 		float xh = (2.0 * x / window->width) - 1.0;
 		float yh = ((2.0 * y / window->height) - 1.0) / window->aspect_ratio;
 
-		if (xh < 2.0f / window->aspect_ratio - 1.0f) {
-			goto none;
+		if (board_over(xh, yh, button, state)) {
+			goto over;
 		}
-
 		if (area_over(&button_start, xh, yh)) {
 			button_start_over = true;
 			goto over;
@@ -366,9 +394,6 @@ static bool pointer_click(const struct window *window, double x, double y,
 		}
 	}
 	return false;
-none:
-	*cursor_name = NULL;
-	return true;
 over:
 	*cursor_name = "left_ptr";
 	return true;
