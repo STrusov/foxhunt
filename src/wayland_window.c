@@ -114,10 +114,11 @@ static const struct xdg_wm_base_listener wm_base_listener = {
 
 struct seat_ctx {
 	struct window	*pointer_focus;
-	uint32_t     	pointer_serial;
+	uint32_t     	pointer_focus_serial;
 	uint32_t     	pointer_time;
 	wl_fixed_t   	pointer_x;
 	wl_fixed_t   	pointer_y;
+	uint32_t     	pointer_button_serial;
 	uint32_t     	pointer_button;
 	uint32_t     	pointer_state;
 	wl_fixed_t   	pointer_axis_h;
@@ -190,13 +191,13 @@ static bool set_cursor(struct seat_ctx *sx, const char *name)
 				window->cursor = wl_compositor_create_surface(compositor);
 			if (!window->cursor)
 				return false;
-			wl_pointer_set_cursor(pointer, sx->pointer_serial, window->cursor,
+			wl_pointer_set_cursor(pointer, sx->pointer_focus_serial, window->cursor,
 			                      image->hotspot_x, image->hotspot_y);
 			wl_surface_attach(window->cursor, buffer, 0, 0);
 			wl_surface_damage(window->cursor, 0, 0, image->width, image->height);
 			wl_surface_commit(window->cursor);
 		} else {
-			wl_pointer_set_cursor(pointer, sx->pointer_serial, NULL, 0, 0);
+			wl_pointer_set_cursor(pointer, sx->pointer_focus_serial, NULL, 0, 0);
 		}
 		window->cursor_name = name;
 	}
@@ -211,7 +212,7 @@ static void on_pointer_enter(void *p, struct wl_pointer *pointer, uint32_t seria
 	assert(!inp->pointer_focus);
 	// До события leave получаемые данные соответствуют данному окну.
 	inp->pointer_focus  = wl_surface_get_user_data(surface);
-	inp->pointer_serial = serial;
+	inp->pointer_focus_serial = serial;
 	inp->pointer_x = x;
 	inp->pointer_y = y;
 	inp->pointer_event |= pointer_enter;
@@ -223,7 +224,7 @@ static void on_pointer_leave(void *p, struct wl_pointer *pointer, uint32_t seria
 	struct seat_ctx *inp = p;
 	struct window *window = wl_surface_get_user_data(surface);
 	assert(window == inp->pointer_focus);
-	inp->pointer_serial = serial;
+	inp->pointer_focus_serial = serial;
 	inp->pointer_event |= pointer_leave;
 }
 
@@ -241,7 +242,7 @@ static void on_pointer_button(void *p, struct wl_pointer *pointer, uint32_t seri
                               uint32_t time, uint32_t button, uint32_t state)
 {
 	struct seat_ctx *inp = p;
-	inp->pointer_serial = serial;
+	inp->pointer_button_serial = serial;
 	inp->pointer_time   = time;
 	inp->pointer_button = button;
 	inp->pointer_state  = state;
@@ -391,7 +392,7 @@ static void on_pointer_frame(void *p, struct wl_pointer *pointer)
 	// Если щелчёк не обработан, двигаем окно.
 	if (pointer_button & inp->pointer_event) {
 		if (resize != XDG_TOPLEVEL_RESIZE_EDGE_NONE) {
-			xdg_toplevel_resize(window->toplevel, seat, inp->pointer_serial, resize);
+			xdg_toplevel_resize(window->toplevel, seat, inp->pointer_button_serial, resize);
 		} else {
 			bool handled = false;
 			if (window->ctrl && window->ctrl->click) {
@@ -408,7 +409,7 @@ static void on_pointer_frame(void *p, struct wl_pointer *pointer)
 				}
 			}
 			if (!handled)
-				xdg_toplevel_move(window->toplevel, seat, inp->pointer_serial);
+				xdg_toplevel_move(window->toplevel, seat, inp->pointer_button_serial);
 		}
 	}
 
