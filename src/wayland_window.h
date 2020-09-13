@@ -57,6 +57,13 @@ struct render {
 struct controller {
 	/** Указатель над окном. Выход за пределы сигнализируется отрицательной координатой. */
 	void (*hover)(const struct window *window, double x, double y, const char **cursor_name);
+
+	/** Изменилось состояние кнопки указательного устройства.
+	 * \button код из linux/input-event-codes.h (BTN_LEFT, BTN_RIGHT, BTN_MIDDLE)
+	 * \state состояние (0 — отпущена; 1 — нажата).
+	 */
+	bool (*click)(const struct window *window, double x, double y,
+	              const char **cursor_name, uint32_t button, uint32_t state);
 };
 
 /** Инициализирует сеанс и интерфейсы для связи с сервером. */

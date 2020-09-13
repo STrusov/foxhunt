@@ -393,7 +393,22 @@ static void on_pointer_frame(void *p, struct wl_pointer *pointer)
 		if (resize != XDG_TOPLEVEL_RESIZE_EDGE_NONE) {
 			xdg_toplevel_resize(window->toplevel, seat, inp->pointer_serial, resize);
 		} else {
-			xdg_toplevel_move(window->toplevel, seat, inp->pointer_serial);
+			bool handled = false;
+			if (window->ctrl && window->ctrl->click) {
+				const char unchanged[0] = {};
+				const char *cursor_name = unchanged;
+				handled = window->ctrl->click(window,
+				                              wl_fixed_to_double(inp->pointer_x),
+				                              wl_fixed_to_double(inp->pointer_y),
+				                              &cursor_name,
+				                              inp->pointer_button, inp->pointer_state);
+				if (cursor_name != unchanged) {
+					const bool cursor_selected = set_cursor(inp, cursor_name);
+					assert(cursor_selected);
+				}
+			}
+			if (!handled)
+				xdg_toplevel_move(window->toplevel, seat, inp->pointer_serial);
 		}
 	}
 

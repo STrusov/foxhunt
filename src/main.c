@@ -343,8 +343,8 @@ static bool draw_frame(void *p)
 	return (r == VK_SUCCESS);
 }
 
-static
-void pointer_over(const struct window *window, double x, double y, const char **cursor_name)
+static bool pointer_click(const struct window *window, double x, double y,
+                          const char **cursor_name, uint32_t button, uint32_t state)
 {
 	button_start_over = false;
 	button_exit_over  = false;
@@ -365,13 +365,19 @@ void pointer_over(const struct window *window, double x, double y, const char **
 			goto over;
 		}
 	}
-	return;
+	return false;
 none:
 	*cursor_name = NULL;
-	return;
+	return true;
 over:
 	*cursor_name = "left_ptr";
-	return;
+	return true;
+}
+
+static
+void pointer_over(const struct window *window, double x, double y, const char **cursor_name)
+{
+	pointer_click(window, x, y, cursor_name, 0, 0);
 }
 
 static const struct render vulkan = {
@@ -383,6 +389,7 @@ static const struct render vulkan = {
 
 static const struct controller controller = {
 	.hover  	= pointer_over,
+	.click  	= pointer_click,
 };
 
 int main(int argc, char *argv[])
