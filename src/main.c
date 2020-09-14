@@ -17,6 +17,7 @@
  */
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <limits.h>
 #include <time.h>
 
@@ -26,6 +27,14 @@
 
 #include "polygon.h"
 #include "text.h"
+
+#ifndef BOARD_MAX_SIZE
+#define BOARD_MAX_SIZE 9
+#endif
+
+#ifndef MAX_FOX_IN_CELL
+#define MAX_FOX_IN_CELL 2
+#endif
 
 const float aspect_ratio = 4.0/3.0;
 //const float aspect_ratio = 16.0/9.0;
@@ -54,33 +63,87 @@ const float aspect_ratio = 4.0/3.0;
 */
 
 static struct timespec start_time;
-
+static int board_size = BOARD_MAX_SIZE;
+static int fox_count = 5;
+static int move_max = 99;
+static int fox_found;
+static int move;
 static bool game_started;
-
-static char move[] = { '0', '0', '\x00' };
-
-static char foxc[] = { '0', '/', '0', '\x00' };
-
-enum {
-	board_size_max = 9,
-};
-
-static int board_size = 9;
 
 static int board_cell_x = -1;
 static int board_cell_y = -1;
 
 struct board_cell {
-	int	fox_here;
-	int	fox_visible;
+	int	fox;
+	int	found;
+	int	visible;
 	int	open;
+	int	animation;
 };
 
-static struct board_cell board[board_size_max*board_size_max];
+static struct board_cell board[BOARD_MAX_SIZE*BOARD_MAX_SIZE];
 
 static struct board_cell* board_at(int x, int y)
 {
 	return &board[x + y * board_size];
+}
+
+/** Расставляет лис на поле */
+static void board_init(void)
+{
+	move = 0;
+	fox_found = 0;
+	for (int i = 0; i < sizeof(board)/sizeof(*board); ++i)
+		board[i] = (struct board_cell) {};
+	for (int fox = 0; fox < fox_count; /**/) {
+		int x = rand() % board_size;
+		int y = rand() % board_size;
+		if (board_at(x, y)->fox < MAX_FOX_IN_CELL) {
+			++board_at(x, y)->fox;
+			++fox;
+		}
+	}
+}
+
+static int check_cell(int x, int y, bool found)
+{
+	struct board_cell *cell = board_at(x, y);
+	if (found)
+		--cell->visible;
+	cell->animation = 100;
+	return cell->fox - cell->found;
+}
+
+/** Считает количество видимых лис, задавая анимацию для проверенных клеток. */
+static void board_check(int x, int y)
+{
+	if (move < move_max)
+		++move;
+	struct board_cell *open = board_at(x, y);
+	if (open->open < INT_MAX)
+		++open->open;
+	const bool found = open->fox > open->found;
+	if (found) {
+		++open->found;
+		++fox_found;
+	}
+	int visible = open->fox - open->found;;
+	for (int i = 0; i < board_size; ++i) {
+		if (i != y)
+			visible += check_cell(x, i, found);
+		if (i != x) {
+			visible += check_cell(i, y, found);
+
+			const int c1 = x - y;
+			if (i - c1 >= 0 && i - c1 < board_size)
+				visible += check_cell(i, i - c1, found);
+
+			const int c2 = x + y;
+			if (c2 - i >= 0 && c2 - i < board_size)
+				visible += check_cell(i, c2 - i, found);
+		}
+	}
+	open->visible = visible;
 }
 
 static bool board_over(float x, float y, uint32_t button, uint32_t state)
@@ -98,9 +161,7 @@ static bool board_over(float x, float y, uint32_t button, uint32_t state)
 		board_cell_y = y100 / 100;
 
 	if (button && state && board_cell_x >= 0 && board_cell_y >= 0) {
-		struct board_cell *cell = board_at(board_cell_x, board_cell_y);
-		if (cell->open < INT_MAX)
-			++cell->open;
+		board_check(board_cell_x, board_cell_y);
 	}
 	return true;
 }
@@ -122,10 +183,21 @@ static void board_draw(int stage, struct draw_ctx *restrict ctx)
 			const struct color cc = hover ? (struct color){ 0.5f, 0.5f, 0.5f, 0.5f }
 			                              : (struct color){ 0.5f, 0.4f, 0.1f, 0.5f };
 			poly_draw(&square094, at, NULL, cc, stage, ctx);
-			const struct board_cell *cell = board_at(xc, yc);
-			if (cell->open > 0) {
-				char num[2] = { cell->fox_visible + '0', '\x00' };
+			struct board_cell *cell = board_at(xc, yc);
+			if (cell->animation > 0) {
+				--cell->animation;
+				char num[2] = { cell->fox + '*', '\x00' };
+				draw_text(num, &polygon8, at, NULL, (struct color){ 0.2f, 0.2f, 0.2f, 0.95f },
+				          stage, ctx);
+			}
+			if (cell->fox > 0) {
+				char num[2] = { cell->fox + '0', '\x00' };
 				draw_text(num, &polygon8, at, NULL, (struct color){ 0.95f, 0.2f, 0.2f, 0.95f },
+				          stage, ctx);
+			}
+			if (cell->open > 0) {
+				char num[2] = { cell->visible + '0', '\x00' };
+				draw_text(num, &polygon8, at, NULL, (struct color){ 0.2f, 0.95f, 0.2f, 0.95f },
 				          stage, ctx);
 			}
 		}
@@ -167,6 +239,11 @@ static void title(int stage, struct draw_ctx *restrict ctx, struct vec4 at)
 	           NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 }, stage, ctx);
 }
 
+static void time_init()
+{
+	timespec_get(&start_time, TIME_UTC);
+}
+
 struct timespec time_from_start(void)
 {
 	struct timespec now;
@@ -183,8 +260,14 @@ static void score(int stage, struct draw_ctx *restrict ctx, struct vec4 at)
 {
 	rectangle(stage, ctx, at, 4.3f, 7.5f, (struct color){ 0.05f, 0.05f, 0.05f, 0.8f });
 
-	// Строку со временем формируем на первом этапе.
+	assert(move <= 99);
+	assert(fox_count <= 9);
+	assert(fox_found <= 9);
+
+	// Строки с информацией о партии оформируем на первом этапе.
 	static char playtime[6];
+	static char movestr[3];
+	static char foxc[4];
 	if (!stage) {
 		const struct timespec pt = time_from_start();
 		time_t m = pt.tv_sec / 60;
@@ -197,11 +280,19 @@ static void score(int stage, struct draw_ctx *restrict ctx, struct vec4 at)
 		playtime[3] = '0' + s / 10;
 		playtime[4] = '0' + s % 10;
 		playtime[5] = '\x0';
-	}
 
+		movestr[0] = '0' + move / 10;
+		movestr[1] = '0' + move % 10;
+		movestr[2] = '\x00';
+
+		foxc[0] = '0' + fox_found;
+		foxc[1] = '/';
+		foxc[2] = '0' + fox_count;
+		foxc[3] = '\x00';
+	}
 	static const char *text[][2] = {
 		{ "ВРЕМЯ", playtime },
-		{ "ХОДЫ",  move },
+		{ "ХОДЫ",  movestr },
 		{ "ЛИСЫ",  foxc },
 	};
 	const int pairs = sizeof(text)/sizeof(*text);
@@ -278,7 +369,9 @@ static void menu(int stage, struct draw_ctx *restrict ctx, struct vec4 at)
 static void game_start(void)
 {
 	game_started = true;
-	timespec_get(&start_time, TIME_UTC);
+	time_init();
+	srand(start_time.tv_nsec ^ start_time.tv_sec);
+	board_init();
 }
 
 static void game_stop(void)
@@ -422,7 +515,7 @@ int main(int argc, char *argv[])
 
 	poly_init();
 
-	game_start();
+	time_init();
 
 	struct window window = {
 		.ctrl 	= &controller,
