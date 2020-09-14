@@ -212,15 +212,19 @@ static void score(int stage, struct draw_ctx *restrict ctx, struct vec4 at)
 	}
 }
 
-struct area {
+struct button {
 	float	left;
 	float	right;
 	float	top;
 	float	bottom;
+	bool 	over;   	///< Указатель над областью (сбрасывается при нажатии).
+	bool 	pressed;	///< Кнопка нажата
+	bool 	click;  	///< Кнопка только что нажата.
+	bool 	release;	///< Кнопка только что отпущена.
 };
 
 static inline
-void area_set(struct area *aa, struct vec4 at, float hw, float hh)
+void button_area_set(struct button *aa, struct vec4 at, float hw, float hh)
 {
 	aa->left   = (at.x - hw) / at.w;
 	aa->right  = (at.x + hw) / at.w;
@@ -228,37 +232,59 @@ void area_set(struct area *aa, struct vec4 at, float hw, float hh)
 	aa->bottom = (at.y + hh) / at.w;
 }
 
-static inline bool area_over(struct area *aa, float x, float y)
+static inline
+bool button_over(struct button *b, float x, float y, uint32_t button, uint32_t state)
 {
-	return aa->left < x && x < aa->right && aa->top < y && y < aa->bottom;
+	b->click   = false;
+	b->release = false;
+	if (b->left > x || x > b->right || b->top > y || y > b->bottom) {
+		b->over    = false;
+		b->pressed = false;
+		return false;
+	}
+	if (button) {
+		if (state && !b->pressed)
+			b->click = true;
+		if (!state && b->pressed)
+			b->release = true;
+		b->pressed = state;
+		if (!state)
+			b->over = true;
+	} else if (!b->pressed)
+		b->over = true;
+	return true;
 }
 
-static struct area button_start, button_exit;
-bool button_start_over, button_exit_over;
+static struct button button_start, button_exit;
 
 static void menu(int stage, struct draw_ctx *restrict ctx, struct vec4 at)
 {
 	rectangle(stage, ctx, at, 4.5f, 2.8f, (struct color){ 0.05f, 0.05f, 0.05f, 0.8f });
 	const float dy = 1.5f;
 
-	area_set(&button_start, (struct vec4){ at.x, at.y - dy, at.z, at.w }, 4.3f, 1.1f);
-	if (button_start_over)
+	button_area_set(&button_start, (struct vec4){ at.x, at.y - dy, at.z, at.w }, 4.3f, 1.1f);
+	if (button_start.over)
 		rectangle(stage, ctx, (struct vec4){ at.x, at.y - dy, at.z, at.w }, 4.3f, 1.1f, (struct color){ 0.5f, 0.5f, 0.5f, 0.8f });
 	draw_text(game_started ? "СТОП":"СТАРТ", &polygon8, (struct vec4){ at.x, at.y - dy, at.z, at.w },
 	          NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 }, stage, ctx);
 
-	area_set(&button_exit, (struct vec4){ at.x, at.y + dy, at.z, at.w }, 4.3f, 1.1f);
-	if (button_exit_over)
+	button_area_set(&button_exit, (struct vec4){ at.x, at.y + dy, at.z, at.w }, 4.3f, 1.1f);
+	if (button_exit.over)
 		rectangle(stage, ctx, (struct vec4){ at.x, at.y + dy, at.z, at.w }, 4.3f, 1.1f, (struct color){ 0.5f, 0.5f, 0.5f, 0.8f });
 	draw_text("ВЫХОД", &polygon8, (struct vec4){ at.x, at.y + dy, at.z, at.w },
 	          NULL, (struct color){ 0.9, 0.0, 0.0, 0.9 }, stage, ctx);
 }
 
-static void start_game(void)
+static void game_start(void)
 {
+	game_started = true;
 	timespec_get(&start_time, TIME_UTC);
 }
 
+static void game_stop(void)
+{
+	game_started = false;
+}
 
 static bool draw_frame(void *p)
 {
@@ -373,8 +399,8 @@ static bool draw_frame(void *p)
 static bool pointer_click(struct window *window, double x, double y,
                           const char **cursor_name, uint32_t button, uint32_t state)
 {
-	button_start_over = false;
-	button_exit_over  = false;
+	button_start.over = false;
+	button_exit.over  = false;
 	board_cell_x = -1;
 	board_cell_y = -1;
 	if (x >= 0) {
@@ -384,24 +410,19 @@ static bool pointer_click(struct window *window, double x, double y,
 		if (board_over(xh, yh, button, state)) {
 			goto over;
 		}
-		if (area_over(&button_start, xh, yh)) {
-			button_start_over = true;
+		if (button_over(&button_start, xh, yh, button, state)) {
+			if (button_start.release) {
+				if (game_started)
+					game_stop();
+				else
+					game_start();
+			}
 			goto over;
 		}
-		// Выход по отпусканию кнопки.
-		// Отменяется при выходе указателя с зажатой клавишей за пределы кнопки.
-		static bool button_exit_pressed;
-		if (area_over(&button_exit, xh, yh)) {
-			if (button) {
-				if (state)
-					button_exit_pressed = true;
-				else
-					window->close = true;
-			} else if (!button_exit_pressed)
-				button_exit_over = true;
+		if (button_over(&button_exit, xh, yh, button, state)) {
+			if (button_exit.release)
+				window->close = true;
 			goto over;
-		} else {
-			button_exit_pressed = false;
 		}
 	}
 	return false;
@@ -441,7 +462,7 @@ int main(int argc, char *argv[])
 
 	poly_init();
 
-	start_game();
+	game_start();
 
 	struct window window = {
 		.ctrl 	= &controller,
