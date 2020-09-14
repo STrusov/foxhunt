@@ -15,6 +15,8 @@
  * https://github.com/Overv/VulkanTutorial/graphs/contributors
  *
  */
+#include <assert.h>
+#include <stdio.h>
 #include <limits.h>
 #include <time.h>
 
@@ -24,8 +26,6 @@
 
 #include "polygon.h"
 #include "text.h"
-
-#include "triangulatio.h"
 
 const float aspect_ratio = 4.0/3.0;
 //const float aspect_ratio = 16.0/9.0;
@@ -293,64 +293,24 @@ static bool draw_frame(void *p)
 	struct vk_context *vk = p;
 	VkResult r = vk_acquire_frame(vk);
 
-	static float angle;
-	angle = angle + PI/192;
-
 	// На стадии 0 вычисляем размер буферов, на следующей их заполняем.
 	unsigned total_indices;
 	unsigned total_vertices;
 	for (int stage = 0; stage <= 1; ++stage) {
 
-		const unsigned cnt = 6;
-		const int dot_cnt = 160;
-
-		struct vertex *vert_buf = NULL;
-		if (stage)
+		struct vertex	*vert_buf = NULL;
+		vert_index   	*indx_buf = NULL;
+		if (stage) {
 			r = vk_begin_vertex_buffer(vk, total_vertices * sizeof(struct vertex), &vert_buf);
-
+			r = vk_begin_index_buffer(vk, total_indices * sizeof(vert_index), &indx_buf);
+		}
 		struct draw_ctx dc = {
 			.vert_buf = vert_buf,
+			.indx_buf = indx_buf,
+			.base = 0,
 		};
 
-		if (stage) {
-			dc.vert_buf->pos.x = 0;
-			dc.vert_buf->pos.y = 0;
-			dc.vert_buf->pos.z = 0;
-			dc.vert_buf->pos.w = 1.0f;
-			dc.vert_buf->color.r = 0.5f;
-			dc.vert_buf->color.g = 0.5f;
-			dc.vert_buf->color.b = 0.5f;
-			dc.vert_buf->color.a = 1.0f;
-		}
-		++dc.vert_buf;
-		for (unsigned i = 0; i < cnt; ++i) {
-			if (stage) {
-				dc.vert_buf->pos.x = 0.95f * cosf(angle + i * 2*PI/cnt);
-				dc.vert_buf->pos.y = 0.95f * sinf(angle + i * 2*PI/cnt);
-				dc.vert_buf->pos.z = 0;
-				dc.vert_buf->pos.w = 2.0f;
-				dc.vert_buf->color.r = 0.3f + 0.7f * cosf(2 * angle + i * 2*PI/(4*cnt));
-				dc.vert_buf->color.g = 0.3f + 0.7f * cosf(3 * angle + i * 2*PI/(3*cnt));
-				dc.vert_buf->color.b = 0.3f + 0.7f * cosf(4 * angle + i * 2*PI/(2*cnt));
-				dc.vert_buf->color.a = 0.0f;
-			}
-			++dc.vert_buf;
-		}
-		const unsigned vcnt = dc.vert_buf - vert_buf;
-
-		unsigned tcnt;
-		struct tri_index *indx;
-		vert_index *indx_buf = NULL;
-		if (stage)
-			r = vk_begin_index_buffer(vk, total_indices * sizeof(vert_index), &indx_buf);
-		indx = (struct tri_index*)indx_buf;
-		if (stage)
-			triangulate(vert_buf, vcnt, &indx, &tcnt);
-		else
-			tcnt = vcnt - 1;
-
-		dc.indx_buf = &indx[tcnt].v[0];
-		dc.base = vcnt;
+		const int dot_cnt = aspect_ratio * board_size * 5;
 		for (int y = -dot_cnt/aspect_ratio + 1; y < dot_cnt/aspect_ratio; y += 2) {
 			for (int x = -dot_cnt + 1; x < dot_cnt; x += 2) {
 				poly_draw(&polygon8, (struct vec4){ x, y, 0, dot_cnt },
