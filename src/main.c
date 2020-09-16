@@ -231,7 +231,7 @@ static void rectangle(int stage, struct draw_ctx *restrict ctx,
 static void title(int stage, struct draw_ctx *restrict ctx, struct vec4 at)
 {
 	rectangle(stage, ctx, at, 4.5f, 2.5f, (struct color){ 0.05f, 0.05f, 0.05f, 0.8f });
-	static const char *text[] = {
+	static const char *const text[] = {
 		"ОХОТА",
 		"НА ЛИС",
 	};
@@ -290,7 +290,7 @@ static void score(int stage, struct draw_ctx *restrict ctx, struct vec4 at)
 		foxc[2] = '0' + fox_count;
 		foxc[3] = '\x00';
 	}
-	static const char *text[][2] = {
+	static const char *const text[][2] = {
 		{ "ВРЕМЯ", playtime },
 		{ "ХОДЫ",  movestr },
 		{ "ЛИСЫ",  foxc },
