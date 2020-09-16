@@ -366,6 +366,32 @@ static void menu(int stage, struct draw_ctx *restrict ctx, struct vec4 at)
 	          NULL, (struct color){ 0.9, 0.0, 0.0, 0.9 }, stage, ctx);
 }
 
+static void intro(int stage, struct draw_ctx *restrict ctx, struct pos2d at)
+{
+	const static char *const rules[] = {
+		"В СЛУЧАЙНЫХ КЛЕТКАХ",
+		"РАСПОЛАГАЮТСЯ \"ЛИСЫ\" -",
+		"РАДИОПЕРЕДАТЧИКИ,",
+		"ПОСЫЛАЮЩИЕ В ЭФИР",
+		"СИГНАЛ \"Я ЗДЕСЬ\".",
+		"\"ОХОТНИК\" ВООРУЖЕН",
+		"ПЕЛЕНГАТОРОМ, ИМЕЮЩИМ",
+		"НАПРАВЛЕННУЮ АНТЕНУ,",
+		"ТАК ЧТО СИГНАЛЫ \"ЛИС\"",
+		"ПРИНИМАЮТСЯ ПО ВЕРТИКАЛИ,",
+		"ГОРИЗОНТАЛИ И ДИАГОНАЛЯМ.",
+		"ЦЕЛЬ:",
+		"ОБНАРУЖИТЬ \"ЛИС\" ЗА",
+		"МИНИМАЛЬНОЕ ЧИСЛО ХОДОВ.",
+		"НАЙДЕННАЯ \"ЛИСА\"",
+		"СНИМАЕТСЯ С ПОЛЯ.",
+	};
+	const float iw = 26.0f;
+	const struct vec4 at4 = { at.x * iw, at.y * iw, 0.0f, iw };
+	text_lines(rules, sizeof(rules)/sizeof(*rules), &polygon8, at4,
+	           NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 }, stage, ctx);
+}
+
 static void game_start(void)
 {
 	game_started = true;
@@ -412,7 +438,14 @@ static bool draw_frame(void *p)
 			}
 		}
 
-		board_draw(stage, &dc);
+		const struct pos2d board_center = {
+			.x = 1.0f / aspect_ratio - 1.0f,
+			.y = 0.0f,
+		};
+		if (game_started)
+			board_draw(stage, &dc);
+		else
+			intro(stage, &dc, board_center);
 
 		const float tw = 18.5f;
 		const float twa = tw / aspect_ratio;
