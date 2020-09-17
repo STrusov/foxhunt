@@ -392,6 +392,16 @@ static void intro(int stage, struct draw_ctx *restrict ctx, struct pos2d at)
 	           NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 }, stage, ctx);
 }
 
+static void background(int stage, struct draw_ctx *restrict ctx)
+{
+	const int dot_cnt = aspect_ratio * board_size * 3;
+	for (int y = -dot_cnt/aspect_ratio + 1; y < dot_cnt/aspect_ratio; y += 2)
+		for (int x = -dot_cnt + 1; x < dot_cnt; x += 2)
+			poly_draw(&square108, (struct vec4){ x, y, 0, dot_cnt },
+			          NULL, (struct color){ 0.5, 0.5, 0.5, 0.1 },
+			          stage, ctx);
+}
+
 static void game_start(void)
 {
 	game_started = true;
@@ -429,14 +439,7 @@ static bool draw_frame(void *p)
 			.base = 0,
 		};
 
-		const int dot_cnt = aspect_ratio * board_size * 5;
-		for (int y = -dot_cnt/aspect_ratio + 1; y < dot_cnt/aspect_ratio; y += 2) {
-			for (int x = -dot_cnt + 1; x < dot_cnt; x += 2) {
-				poly_draw(&polygon8, (struct vec4){ x, y, 0, dot_cnt },
-				          NULL, (struct color){ 0.5, 0.5, 0.5, 0.1 },
-				          stage, &dc);
-			}
-		}
+		background(stage, &dc);
 
 		const struct pos2d board_center = {
 			.x = 1.0f / aspect_ratio - 1.0f,

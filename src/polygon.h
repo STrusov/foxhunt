@@ -16,6 +16,7 @@ struct polygon {
 };
 
 const struct polygon square094;
+const struct polygon square108;
 const struct polygon polygon8;
 
 void poly_init();
