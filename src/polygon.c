@@ -98,9 +98,9 @@ static inline void color_copy(struct vertex *restrict vert, struct color src)
 
 void poly_draw(const struct polygon *p, struct vec4 coordinate,
                void(painter)(struct vertex*, struct color), struct color color,
-               int stage, struct draw_ctx *restrict ctx)
+               struct draw_ctx *restrict ctx)
 {
-	if (!stage) {
+	if (!ctx->stage) {
 		ctx->vert_buf += p->vert_count;
 		ctx->indx_buf += 3 * p->tri_count;
 		return;

@@ -166,7 +166,7 @@ static bool board_over(float x, float y, uint32_t button, uint32_t state)
 	return true;
 }
 
-static void board_draw(int stage, struct draw_ctx *restrict ctx)
+static void board_draw(struct draw_ctx *restrict ctx)
 {
 	const float step = 2.0f;
 	float y = 1.0f - board_size;
@@ -182,32 +182,32 @@ static void board_draw(int stage, struct draw_ctx *restrict ctx)
 			bool hover = xc == board_cell_x && yc == board_cell_y;
 			const struct color cc = hover ? (struct color){ 0.5f, 0.5f, 0.5f, 0.5f }
 			                              : (struct color){ 0.5f, 0.4f, 0.1f, 0.5f };
-			poly_draw(&square094, at, NULL, cc, stage, ctx);
+			poly_draw(&square094, at, NULL, cc, ctx);
 			struct board_cell *cell = board_at(xc, yc);
 			if (cell->animation > 0) {
 				--cell->animation;
 				char num[2] = { cell->fox + '*', '\x00' };
 				draw_text(num, &polygon8, at, NULL, (struct color){ 0.2f, 0.2f, 0.2f, 0.95f },
-				          stage, ctx);
+				          ctx);
 			}
 			if (cell->fox > 0) {
 				char num[2] = { cell->fox + '0', '\x00' };
 				draw_text(num, &polygon8, at, NULL, (struct color){ 0.95f, 0.2f, 0.2f, 0.95f },
-				          stage, ctx);
+				          ctx);
 			}
 			if (cell->open > 0) {
 				char num[2] = { cell->visible + '0', '\x00' };
 				draw_text(num, &polygon8, at, NULL, (struct color){ 0.2f, 0.95f, 0.2f, 0.95f },
-				          stage, ctx);
+				          ctx);
 			}
 		}
 	}
 }
 
-static void rectangle(int stage, struct draw_ctx *restrict ctx,
+static void rectangle(struct draw_ctx *restrict ctx,
                       struct vec4 at, float hw, float hh, struct color color)
 {
-	if (stage) {
+	if (ctx->stage) {
 		ctx->vert_buf[0].pos = (struct vec4){ at.x - hw, at.y + hh, at.z, at.w };
 		ctx->vert_buf[0].color = color;
 		ctx->vert_buf[1].pos = (struct vec4){ at.x - hw, at.y - hh, at.z, at.w };
@@ -228,15 +228,15 @@ static void rectangle(int stage, struct draw_ctx *restrict ctx,
 	ctx->indx_buf += 6;
 }
 
-static void title(int stage, struct draw_ctx *restrict ctx, struct vec4 at)
+static void title(struct draw_ctx *restrict ctx, struct vec4 at)
 {
-	rectangle(stage, ctx, at, 4.5f, 2.5f, (struct color){ 0.05f, 0.05f, 0.05f, 0.8f });
+	rectangle(ctx, at, 4.5f, 2.5f, (struct color){ 0.05f, 0.05f, 0.05f, 0.8f });
 	static const char *const text[] = {
 		"ОХОТА",
 		"НА ЛИС",
 	};
 	text_lines(text, sizeof(text)/sizeof(*text), &polygon8, at,
-	           NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 }, stage, ctx);
+	           NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 }, ctx);
 }
 
 static void time_init()
@@ -256,9 +256,9 @@ struct timespec time_from_start(void)
 	};
 }
 
-static void score(int stage, struct draw_ctx *restrict ctx, struct vec4 at)
+static void score(struct draw_ctx *restrict ctx, struct vec4 at)
 {
-	rectangle(stage, ctx, at, 4.3f, 7.5f, (struct color){ 0.05f, 0.05f, 0.05f, 0.8f });
+	rectangle(ctx, at, 4.3f, 7.5f, (struct color){ 0.05f, 0.05f, 0.05f, 0.8f });
 
 	assert(move <= 99);
 	assert(fox_count <= 9);
@@ -268,7 +268,7 @@ static void score(int stage, struct draw_ctx *restrict ctx, struct vec4 at)
 	static char playtime[6];
 	static char movestr[3];
 	static char foxc[4];
-	if (!stage) {
+	if (!ctx->stage) {
 		const struct timespec pt = time_from_start();
 		time_t m = pt.tv_sec / 60;
 		long   s = pt.tv_sec % 60;
@@ -299,7 +299,7 @@ static void score(int stage, struct draw_ctx *restrict ctx, struct vec4 at)
 	for (int s = 0; s < pairs; ++s) {
 		const float dy = 5.0f * (s - 0.5f * (pairs-1));
 		text_lines(text[s], 2, &polygon8, (struct vec4){ at.x, at.y + dy, at.z, at.w },
-		           NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 }, stage, ctx);
+		           NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 }, ctx);
 	}
 }
 
@@ -348,25 +348,25 @@ bool button_over(struct button *b, float x, float y, uint32_t button, uint32_t s
 
 static struct button button_start, button_exit;
 
-static void menu(int stage, struct draw_ctx *restrict ctx, struct vec4 at)
+static void menu(struct draw_ctx *restrict ctx, struct vec4 at)
 {
-	rectangle(stage, ctx, at, 4.5f, 2.8f, (struct color){ 0.05f, 0.05f, 0.05f, 0.8f });
+	rectangle(ctx, at, 4.5f, 2.8f, (struct color){ 0.05f, 0.05f, 0.05f, 0.8f });
 	const float dy = 1.5f;
 
 	button_area_set(&button_start, (struct vec4){ at.x, at.y - dy, at.z, at.w }, 4.3f, 1.1f);
 	if (button_start.over)
-		rectangle(stage, ctx, (struct vec4){ at.x, at.y - dy, at.z, at.w }, 4.3f, 1.1f, (struct color){ 0.5f, 0.5f, 0.5f, 0.8f });
+		rectangle(ctx, (struct vec4){ at.x, at.y - dy, at.z, at.w }, 4.3f, 1.1f, (struct color){ 0.5f, 0.5f, 0.5f, 0.8f });
 	draw_text(game_started ? "СТОП":"СТАРТ", &polygon8, (struct vec4){ at.x, at.y - dy, at.z, at.w },
-	          NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 }, stage, ctx);
+	          NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 }, ctx);
 
 	button_area_set(&button_exit, (struct vec4){ at.x, at.y + dy, at.z, at.w }, 4.3f, 1.1f);
 	if (button_exit.over)
-		rectangle(stage, ctx, (struct vec4){ at.x, at.y + dy, at.z, at.w }, 4.3f, 1.1f, (struct color){ 0.5f, 0.5f, 0.5f, 0.8f });
+		rectangle(ctx, (struct vec4){ at.x, at.y + dy, at.z, at.w }, 4.3f, 1.1f, (struct color){ 0.5f, 0.5f, 0.5f, 0.8f });
 	draw_text("ВЫХОД", &polygon8, (struct vec4){ at.x, at.y + dy, at.z, at.w },
-	          NULL, (struct color){ 0.9, 0.0, 0.0, 0.9 }, stage, ctx);
+	          NULL, (struct color){ 0.9, 0.0, 0.0, 0.9 }, ctx);
 }
 
-static void intro(int stage, struct draw_ctx *restrict ctx, struct pos2d at)
+static void intro(struct draw_ctx *restrict ctx, struct pos2d at)
 {
 	const static char *const rules[] = {
 		"В СЛУЧАЙНЫХ КЛЕТКАХ",
@@ -389,17 +389,16 @@ static void intro(int stage, struct draw_ctx *restrict ctx, struct pos2d at)
 	const float iw = 26.0f;
 	const struct vec4 at4 = { at.x * iw, at.y * iw, 0.0f, iw };
 	text_lines(rules, sizeof(rules)/sizeof(*rules), &polygon8, at4,
-	           NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 }, stage, ctx);
+	           NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 }, ctx);
 }
 
-static void background(int stage, struct draw_ctx *restrict ctx)
+static void background(struct draw_ctx *restrict ctx)
 {
 	const int dot_cnt = aspect_ratio * board_size * 3;
 	for (int y = -dot_cnt/aspect_ratio + 1; y < dot_cnt/aspect_ratio; y += 2)
 		for (int x = -dot_cnt + 1; x < dot_cnt; x += 2)
 			poly_draw(&square108, (struct vec4){ x, y, 0, dot_cnt },
-			          NULL, (struct color){ 0.5, 0.5, 0.5, 0.1 },
-			          stage, ctx);
+			          NULL, (struct color){ 0.5, 0.5, 0.5, 0.1 }, ctx);
 }
 
 static void game_start(void)
@@ -425,43 +424,40 @@ static bool draw_frame(void *p)
 	// На стадии 0 вычисляем размер буферов, на следующей их заполняем.
 	unsigned total_indices;
 	unsigned total_vertices;
-	for (int stage = 0; stage <= 1; ++stage) {
+	for (struct draw_ctx dc = {0}; dc.stage <= 1; ++dc.stage) {
 
 		struct vertex	*vert_buf = NULL;
 		vert_index   	*indx_buf = NULL;
-		if (stage) {
+		if (dc.stage) {
 			r = vk_begin_vertex_buffer(vk, total_vertices * sizeof(struct vertex), &vert_buf);
 			r = vk_begin_index_buffer(vk, total_indices * sizeof(vert_index), &indx_buf);
 		}
-		struct draw_ctx dc = {
-			.vert_buf = vert_buf,
-			.indx_buf = indx_buf,
-			.base = 0,
-		};
+		dc.vert_buf = vert_buf;
+		dc.indx_buf = indx_buf;
 
-		background(stage, &dc);
+		background(&dc);
 
 		const struct pos2d board_center = {
 			.x = 1.0f / aspect_ratio - 1.0f,
 			.y = 0.0f,
 		};
 		if (game_started)
-			board_draw(stage, &dc);
+			board_draw(&dc);
 		else
-			intro(stage, &dc, board_center);
+			intro(&dc, board_center);
 
 		const float tw = 18.5f;
 		const float twa = tw / aspect_ratio;
-		title(stage, &dc, (struct vec4){ twa, -0.7f * twa, 0.0f, tw });
+		title(&dc, (struct vec4){ twa, -0.7f * twa, 0.0f, tw });
 
 		const float sw = 15.0f * aspect_ratio;
-		score(stage, &dc, (struct vec4){ sw/aspect_ratio, 0.05f * sw, 0.0f, sw });
+		score(&dc, (struct vec4){ sw/aspect_ratio, 0.05f * sw, 0.0f, sw });
 
 		const float mw = 21.0f * aspect_ratio;
 		const float mwa = mw / aspect_ratio;
-		menu(stage, &dc, (struct vec4){ mwa, 0.8f * mwa, 0.0f, mw });
+		menu(&dc, (struct vec4){ mwa, 0.8f * mwa, 0.0f, mw });
 
-		if (stage) {
+		if (dc.stage) {
 			assert(total_vertices == dc.vert_buf - vert_buf);
 			assert(total_indices  == dc.indx_buf - indx_buf);
 		}

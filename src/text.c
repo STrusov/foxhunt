@@ -111,7 +111,7 @@ static inline unsigned glyphpopc(unsigned idx)
 
 void draw_text(const char *str, const struct polygon *poly, struct vec4 at,
                void(painter)(struct vertex*, struct color), struct color color,
-               int stage, struct draw_ctx *restrict ctx)
+               struct draw_ctx *restrict ctx)
 {
 	int cnt;
 	// Предварительно подготавливаем индексы в массиве font и ширину глифов.
@@ -133,7 +133,7 @@ void draw_text(const char *str, const struct polygon *poly, struct vec4 at,
 			width[cnt] = *str;
 			goto calc_line_width;
 		}
-		if (stage) {
+		if (ctx->stage) {
 			width[cnt] = glyphwidth(glidx[cnt]);
 calc_line_width:
 			line_width += width[cnt] + 1; // межсимвольный интервал.
@@ -141,7 +141,7 @@ calc_line_width:
 			popc += glyphpopc(glidx[cnt]);
 		}
 	}
-	if (!stage) {
+	if (!ctx->stage) {
 		ctx->vert_buf += popc * poly->vert_count;
 		ctx->indx_buf += popc * 3 * poly->tri_count;
 		return;
@@ -159,7 +159,7 @@ calc_line_width:
 						.z = at.z * glyph_height,
 						.w = at.w * glyph_height,
 					};
-					poly_draw(poly, coord, painter, color, stage, ctx);
+					poly_draw(poly, coord, painter, color, ctx);
 				}
 				line >>= 1;
 			}
@@ -170,13 +170,13 @@ calc_line_width:
 
 void text_lines(const char *const text[], int lines, const struct polygon *poly, struct vec4 at,
                void(painter)(struct vertex*, struct color), struct color color,
-               int stage, struct draw_ctx *restrict ctx)
+               struct draw_ctx *restrict ctx)
 {
 	assert(lines > 0);
 	for (int s = 0; s < lines; ++s) {
 		float dy = 2.0f * (glyph_height + 1.0f)/glyph_height * (s - 0.5f*(lines-1));
 		draw_text(text[s], poly, (struct vec4){ at.x, at.y + dy, at.z, at.w },
-		          painter, color, stage, ctx);
+		          painter, color, ctx);
 	}
 }
 

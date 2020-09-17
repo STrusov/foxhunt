@@ -36,4 +36,5 @@ struct draw_ctx {
 	struct vertex 	*restrict vert_buf;
 	vert_index    	*restrict indx_buf;
 	vert_index    	base;
+	int           	stage;
 };
