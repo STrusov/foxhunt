@@ -106,6 +106,7 @@ struct vk_context {
 	VkSurfaceFormatKHR	format;
 
 	VkSurfaceTransformFlagBitsKHR	transform;
+	VkCompositeAlphaFlagsKHR     	supported_alpha;
 	uint32_t        	min_count;
 	/** Количество кадров в последовательности И номер резервного */
 	uint32_t        	count;
@@ -292,6 +293,8 @@ static VkResult surface_characteristics(struct vk_context *vk)
 	printf(" Допустимое количество кадров последовательности: %u..%u\n",
 	         surfcaps.minImageCount,
 	         surfcaps.maxImageCount ? surfcaps.maxImageCount : (uint32_t)-1);
+	vk->supported_alpha = surfcaps.supportedCompositeAlpha;
+	printf(" Поддерживаются наложения: %#x\n", surfcaps.supportedCompositeAlpha);
 
 	uint32_t	n_formats = 0, chosen_format = 0;
 	r = vkGetPhysicalDeviceSurfaceFormatsKHR(vk->gpu, vk->surface, &n_formats, NULL);
@@ -342,7 +345,11 @@ static VkResult create_swapchain(struct vk_context *vk, uint32_t width, uint32_t
 		.queueFamilyIndexCount	= excl ? 0 : vk_num_queues,
 		.pQueueFamilyIndices  	= &vk->qi[vk_first_queue],
 		.preTransform         	= vk->transform,
-		.compositeAlpha       	= VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+		// TODO cпецификация гарантирует поддержку минимум одного типа, но
+		// не определяет его. Наивно предполагаем возможность непрозрачного окна.
+		.compositeAlpha       	= vk->supported_alpha & VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR
+		                        ? VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR
+		                        : VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
 		.presentMode          	= VK_PRESENT_MODE_FIFO_KHR,
 		.clipped              	= VK_TRUE,
 		.oldSwapchain         	= vk->old_swapchain,
@@ -611,8 +618,8 @@ static VkResult create_pipeline(struct vk_context *vk)
 		.srcColorBlendFactor	= VK_BLEND_FACTOR_SRC_ALPHA,
 		.dstColorBlendFactor	= VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
 		.colorBlendOp       	= VK_BLEND_OP_ADD,
-		.srcAlphaBlendFactor	= VK_BLEND_FACTOR_ZERO,
-		.dstAlphaBlendFactor	= VK_BLEND_FACTOR_ONE,
+		.srcAlphaBlendFactor	= VK_BLEND_FACTOR_ONE,
+		.dstAlphaBlendFactor	= VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
 		.alphaBlendOp       	= VK_BLEND_OP_ADD,
 		.colorWriteMask     	= VK_COLOR_COMPONENT_R_BIT
 		                    	| VK_COLOR_COMPONENT_G_BIT
@@ -906,7 +913,7 @@ VkResult vk_begin_render_cmd(struct vk_context *vk)
 	VkResult r = vkBeginCommandBuffer(vk->frame[vk->active].cmd, &buf_begin);
 	if (r == VK_SUCCESS) {
 		static const union VkClearValue cc = {
-			.color.float32	= { 0.0, 0.0, 0.0, 1.0 },
+			.color.float32	= { 0.0, 0.0, 0.0, 0.0 },
 		};
 		const struct VkRenderPassBeginInfo rpinfo = {
 			.sType          	= VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,

@@ -190,8 +190,8 @@ static void board_draw(struct draw_ctx *restrict ctx)
 				.w = board_size * aspect_ratio,
 			};
 			bool hover = xc == board_cell_x && yc == board_cell_y;
-			const struct color cc = hover ? (struct color){ 0.5f, 0.5f, 0.5f, 0.5f }
-			                              : (struct color){ 0.5f, 0.4f, 0.1f, 0.5f };
+			const struct color cc = hover ? (struct color){ 0.5f, 0.5f, 0.5f, 0.9f }
+			                              : (struct color){ 0.2f, 0.2f, 0.1f, 0.9f };
 			poly_draw(&square094, at, NULL, cc, ctx);
 			struct board_cell *cell = board_at(xc, yc);
 			if (cell->animation > 0) {
@@ -404,6 +404,7 @@ static void intro(struct draw_ctx *restrict ctx, struct pos2d at)
 	};
 	const float iw = 26.0f;
 	const struct vec4 at4 = { at.x * iw, at.y * iw, 0.0f, iw };
+	rectangle(ctx, at4, 19.0f, 19.0f, (struct color){ 0.05f, 0.05f, 0.05f, 0.8f });
 	text_lines(rules, sizeof(rules)/sizeof(*rules), &polygon8, at4,
 	           NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 }, ctx);
 }
@@ -414,7 +415,7 @@ static void background(struct draw_ctx *restrict ctx)
 	for (int y = -dot_cnt/aspect_ratio + 1; y < dot_cnt/aspect_ratio; y += 2)
 		for (int x = -dot_cnt + 1; x < dot_cnt; x += 2)
 			poly_draw(&square108, (struct vec4){ x, y, 0, dot_cnt },
-			          NULL, (struct color){ 0.5, 0.5, 0.5, 0.1 }, ctx);
+			          NULL, (struct color){ 0.1, 0.1, 0.1, 0.25 }, ctx);
 }
 
 static void game_start(void)
