@@ -68,7 +68,13 @@ static int fox_count = 5;
 static int move_max = 99;
 static int fox_found;
 static int move;
-static bool game_started;
+
+enum game_state {
+	gs_intro,
+	gs_play,
+	gs_finish,
+};
+static enum game_state game_state = gs_intro;
 
 static int board_cell_x = -1;
 static int board_cell_y = -1;
@@ -119,6 +125,8 @@ static void board_check(int x, int y)
 {
 	if (move < move_max)
 		++move;
+	else
+		game_state = gs_finish;
 	struct board_cell *open = board_at(x, y);
 	if (open->open < INT_MAX)
 		++open->open;
@@ -126,6 +134,8 @@ static void board_check(int x, int y)
 	if (found) {
 		++open->found;
 		++fox_found;
+		if (fox_found == fox_count)
+			game_state = gs_finish;
 	}
 	int visible = open->fox - open->found;;
 	for (int i = 0; i < board_size; ++i) {
@@ -264,19 +274,25 @@ static void score(struct draw_ctx *restrict ctx, struct vec4 at)
 	assert(fox_count <= 9);
 	assert(fox_found <= 9);
 
-	// Строки с информацией о партии оформируем на первом этапе.
+	// Строки с информацией о партии формируем на первом этапе.
 	static char playtime[6];
 	static char movestr[3];
 	static char foxc[4];
 	if (!ctx->stage) {
 		const struct timespec pt = time_from_start();
-		time_t m = pt.tv_sec / 60;
-		long   s = pt.tv_sec % 60;
-		if (m > 99 || m < 0)
+		static struct timespec last;
+		if (game_state == gs_play)
+			last = pt;
+		time_t m = last.tv_sec / 60;
+		long   s = last.tv_sec % 60;
+		if (m > 99 || m < 0) {
 			m = s = 99;
+			game_state = gs_finish;
+		}
+
 		playtime[0] = '0' + m / 10;
 		playtime[1] = '0' + m % 10;
-		playtime[2] = pt.tv_nsec < 1000000000/2 ? ':' : '\x01';
+		playtime[2] = game_state != gs_play || pt.tv_nsec < 1000000000/2 ? ':' : '\x01';
 		playtime[3] = '0' + s / 10;
 		playtime[4] = '0' + s % 10;
 		playtime[5] = '\x0';
@@ -356,7 +372,7 @@ static void menu(struct draw_ctx *restrict ctx, struct vec4 at)
 	button_area_set(&button_start, (struct vec4){ at.x, at.y - dy, at.z, at.w }, 4.3f, 1.1f);
 	if (button_start.over)
 		rectangle(ctx, (struct vec4){ at.x, at.y - dy, at.z, at.w }, 4.3f, 1.1f, (struct color){ 0.5f, 0.5f, 0.5f, 0.8f });
-	draw_text(game_started ? "СТОП":"СТАРТ", &polygon8, (struct vec4){ at.x, at.y - dy, at.z, at.w },
+	draw_text(game_state == gs_play ? "СТОП":"СТАРТ", &polygon8, (struct vec4){ at.x, at.y - dy, at.z, at.w },
 	          NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 }, ctx);
 
 	button_area_set(&button_exit, (struct vec4){ at.x, at.y + dy, at.z, at.w }, 4.3f, 1.1f);
@@ -403,7 +419,7 @@ static void background(struct draw_ctx *restrict ctx)
 
 static void game_start(void)
 {
-	game_started = true;
+	game_state = gs_play;
 	time_init();
 	srand(start_time.tv_nsec ^ start_time.tv_sec);
 	board_init();
@@ -411,7 +427,7 @@ static void game_start(void)
 
 static void game_stop(void)
 {
-	game_started = false;
+	game_state = gs_intro;
 }
 
 static bool draw_frame(void *p)
@@ -441,10 +457,15 @@ static bool draw_frame(void *p)
 			.x = 1.0f / aspect_ratio - 1.0f,
 			.y = 0.0f,
 		};
-		if (game_started)
+		switch (game_state) {
+		case gs_play:
+		case gs_finish:
 			board_draw(&dc);
-		else
+			break;
+		case gs_intro:
 			intro(&dc, board_center);
+			break;
+		}
 
 		const float tw = 18.5f;
 		const float twa = tw / aspect_ratio;
@@ -492,16 +513,16 @@ static bool pointer_click(struct window *window, double x, double y,
 		float xh = (2.0 * x / window->width) - 1.0;
 		float yh = ((2.0 * y / window->height) - 1.0) / window->aspect_ratio;
 
-		if (board_over(xh, yh, button, state)) {
+		if (game_state == gs_play && board_over(xh, yh, button, state)) {
 			goto over;
 		}
 		if (button_over(&button_start, xh, yh, button, state)) {
-			if (button_start.release) {
-				if (game_started)
-					game_stop();
-				else
-					game_start();
-			}
+			if (button_start.release)
+				switch (game_state) {
+				case gs_finish:
+				case gs_intro:	game_start(); break;
+				case gs_play: 	game_stop();  break;
+				}
 			goto over;
 		}
 		if (button_over(&button_exit, xh, yh, button, state)) {
