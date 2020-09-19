@@ -257,7 +257,11 @@ static void time_init()
 struct timespec time_from_start(void)
 {
 	struct timespec now;
+#ifdef NDEBUG
+	timespec_get(&now, TIME_UTC);
+#else
 	int r = timespec_get(&now, TIME_UTC);
+#endif
 	assert(r == TIME_UTC);
 	const bool carry = now.tv_nsec < start_time.tv_nsec;
 	return (struct timespec) {

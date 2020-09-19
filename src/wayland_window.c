@@ -222,7 +222,9 @@ static void on_pointer_leave(void *p, struct wl_pointer *pointer, uint32_t seria
                              struct wl_surface *surface)
 {
 	struct seat_ctx *inp = p;
+#ifndef NDEBUG
 	struct window *window = wl_surface_get_user_data(surface);
+#endif
 	assert(window == inp->pointer_focus);
 	inp->pointer_focus_serial = serial;
 	inp->pointer_event |= pointer_leave;
@@ -393,7 +395,11 @@ static void on_pointer_frame(void *p, struct wl_pointer *pointer)
 			cursor_name = "bottom_right_corner";
 			break;
 		}
+#ifdef NDEBUG
+		set_cursor(inp, cursor_name);
+#else
 		const bool cursor_selected = set_cursor(inp, cursor_name);
+#endif
 		assert(cursor_selected);
 	}
 
@@ -413,7 +419,9 @@ static void on_pointer_frame(void *p, struct wl_pointer *pointer)
 				                              &cursor_name,
 				                              inp->pointer_button, inp->pointer_state);
 				if (cursor_name != unchanged) {
+#ifndef NDEBUG
 					const bool cursor_selected = set_cursor(inp, cursor_name);
+#endif
 					assert(cursor_selected);
 				}
 			}

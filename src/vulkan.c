@@ -356,7 +356,9 @@ static VkResult create_swapchain(struct vk_context *vk, uint32_t width, uint32_t
 	};
 	r = vkCreateSwapchainKHR(vk->device, &swch, allocator, &vk->swapchain);
 	if (r == VK_SUCCESS) {
+#ifndef NDEBUG
 		uint32_t old_count = vk->count;
+#endif
 		// Хорошо бы исключить лишний вызов при old_swapchain, но валидатор:
 		// UNASSIGNED-CoreValidation-SwapchainInvalidCount(ERROR / SPEC): msgNum: 442632974 - Validation Error: [ UNASSIGNED-CoreValidation-SwapchainInvalidCount ] Object 0: handle = 0x56272ef7a440, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x1a620b0e | vkGetSwapchainImagesKHR() called with non-NULL pSwapchainImages, and with pSwapchainImageCount set to a value (4) that is greater than the value (0) that was returned when pSwapchainImages was NULL.
 		vkGetSwapchainImagesKHR(vk->device, vk->swapchain, &vk->count, NULL);
