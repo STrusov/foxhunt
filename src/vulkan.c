@@ -513,7 +513,7 @@ static VkResult create_shaders(struct vk_context *vk)
 			.pCode   	= (const uint32_t*)shader_frag_spv,
 		},
 	};
-	static_assert(sizeof(shader_mods)/sizeof(*shader_mods) == sizeof(vk->shader)/sizeof(*vk->shader));
+	static_assert(sizeof(shader_mods)/sizeof(*shader_mods) == sizeof(vk->shader)/sizeof(*vk->shader), "Несоответствие модулей шейдеров.");
 	VkResult r;
 	for (int i = 0; i < sizeof(shader_mods)/sizeof(*shader_mods); ++i) {
 		r = vkCreateShaderModule(vk->device, &shader_mods[i], allocator, &vk->shader[i]);
@@ -539,7 +539,7 @@ static VkResult create_pipeline(struct vk_context *vk)
 			.pName 	= "main",
 		},
 	};
-	static_assert(sizeof(shader_stages)/sizeof(*shader_stages) == sizeof(vk->shader)/sizeof(*vk->shader));
+	static_assert(sizeof(shader_stages)/sizeof(*shader_stages) == sizeof(vk->shader)/sizeof(*vk->shader), "Несоответствие стадий шейдеров.");
 	static const struct VkVertexInputBindingDescription vertex_binding = {
 		.binding  	= 0,
 		.stride   	= sizeof(struct vertex),

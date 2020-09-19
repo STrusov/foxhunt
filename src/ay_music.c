@@ -35,7 +35,7 @@ enum {
 	default_buffer_time	= chunks * default_period_time,
 };
 
-static_assert(channels == 2);
+static_assert(channels == 2, "Поддерживается только стереозвук.");
 
 static unsigned int	sample_rate	= default_sample_rate;
 
@@ -90,7 +90,7 @@ unsigned	chunk_size;
 /** Формируем фрагмент PCM звука длительностью один кадр (1/50 сек) ZX-Spectrum. */
 static void ay_make_chunk(void)
 {
-	static_assert((int)format == SND_PCM_FORMAT_S16);
+	static_assert((int)format == SND_PCM_FORMAT_S16, "Поддерживается только формат SND_PCM_FORMAT_S16.");
 	//  Такты AY
 	for (int t = 0; t < ay_clock / zx_frame_rate; t += 8) {
 		if (++noise_cycle >= noise_frequency) {
@@ -269,7 +269,7 @@ void ay_music_play(void)
 const uint8_t music[] = {
 #include "../music/foxh.cps.inl"
 };
-static_assert(sizeof(music));
+static_assert(sizeof(music), "Отсутствуют данные музыки.");
 
 typedef struct uint16_le {
 	uint8_t 	l;
