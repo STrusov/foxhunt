@@ -36,6 +36,21 @@
 #define MAX_FOX_IN_CELL 2
 #endif
 
+#define COLOR_CELL      	((struct color){ 0.20f, 0.20f, 0.10f, 0.90f })
+#define COLOR_CELL_HOVER	((struct color){ 0.50f, 0.50f, 0.50f, 0.90f })
+#define COLOR_CELL_TEXT 	((struct color){ 0.20f, 0.95f, 0.20f, 0.95f })
+#define COLOR_CELL_FOX  	((struct color){ 0.95f, 0.20f, 0.20f, 0.95f })
+#define COLOR_CELL_ANIM 	((struct color){ 0.20f, 0.20f, 0.20f, 0.95f })
+#define COLOR_BOX       	((struct color){ 0.05f, 0.05f, 0.05f, 0.80f })
+#define COLOR_HOVER     	((struct color){ 0.50f, 0.50f, 0.50f, 0.80f })
+#define COLOR_TITLE     	((struct color){ 0.00f, 0.90f, 0.00f, 0.90f })
+#define COLOR_INTRO     	((struct color){ 0.00f, 0.90f, 0.00f, 0.90f })
+#define COLOR_SCORE     	((struct color){ 0.00f, 0.90f, 0.00f, 0.90f })
+#define COLOR_START     	((struct color){ 0.00f, 0.90f, 0.00f, 0.90f })
+#define COLOR_STOP      	((struct color){ 0.90f, 0.90f, 0.00f, 0.90f })
+#define COLOR_EXIT      	((struct color){ 0.90f, 0.00f, 0.00f, 0.90f })
+#define COLOR_BACKGROUND	((struct color){ 0.10f, 0.10f, 0.10f, 0.25f })
+
 const float aspect_ratio = 4.0/3.0;
 //const float aspect_ratio = 16.0/9.0;
 
@@ -190,25 +205,21 @@ static void board_draw(struct draw_ctx *restrict ctx)
 				.w = board_size * aspect_ratio,
 			};
 			bool hover = xc == board_cell_x && yc == board_cell_y;
-			const struct color cc = hover ? (struct color){ 0.5f, 0.5f, 0.5f, 0.9f }
-			                              : (struct color){ 0.2f, 0.2f, 0.1f, 0.9f };
+			const struct color cc = hover ? COLOR_CELL_HOVER : COLOR_CELL;
 			poly_draw(&square094, at, NULL, cc, ctx);
 			struct board_cell *cell = board_at(xc, yc);
 			if (cell->animation > 0) {
 				--cell->animation;
 				char num[2] = { cell->fox + '*', '\x00' };
-				draw_text(num, &polygon8, at, NULL, (struct color){ 0.2f, 0.2f, 0.2f, 0.95f },
-				          ctx);
+				draw_text(num, &polygon8, at, NULL, COLOR_CELL_ANIM, ctx);
 			}
 			if (cell->fox > 0) {
 				char num[2] = { cell->fox + '0', '\x00' };
-				draw_text(num, &polygon8, at, NULL, (struct color){ 0.95f, 0.2f, 0.2f, 0.95f },
-				          ctx);
+				draw_text(num, &polygon8, at, NULL, COLOR_CELL_FOX, ctx);
 			}
 			if (cell->open > 0) {
 				char num[2] = { cell->visible + '0', '\x00' };
-				draw_text(num, &polygon8, at, NULL, (struct color){ 0.2f, 0.95f, 0.2f, 0.95f },
-				          ctx);
+				draw_text(num, &polygon8, at, NULL, COLOR_CELL_TEXT, ctx);
 			}
 		}
 	}
@@ -240,13 +251,13 @@ static void rectangle(struct draw_ctx *restrict ctx,
 
 static void title(struct draw_ctx *restrict ctx, struct vec4 at)
 {
-	rectangle(ctx, at, 4.5f, 2.5f, (struct color){ 0.05f, 0.05f, 0.05f, 0.8f });
+	rectangle(ctx, at, 4.5f, 2.5f, COLOR_BOX);
 	static const char *const text[] = {
 		"ОХОТА",
 		"НА ЛИС",
 	};
 	text_lines(text, sizeof(text)/sizeof(*text), &polygon8, at,
-	           NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 }, ctx);
+	           NULL, COLOR_TITLE, ctx);
 }
 
 static void time_init()
@@ -272,7 +283,7 @@ struct timespec time_from_start(void)
 
 static void score(struct draw_ctx *restrict ctx, struct vec4 at)
 {
-	rectangle(ctx, at, 4.3f, 7.5f, (struct color){ 0.05f, 0.05f, 0.05f, 0.8f });
+	rectangle(ctx, at, 4.3f, 7.5f, COLOR_BOX);
 
 	assert(move <= 99);
 	assert(fox_count <= 9);
@@ -319,7 +330,7 @@ static void score(struct draw_ctx *restrict ctx, struct vec4 at)
 	for (int s = 0; s < pairs; ++s) {
 		const float dy = 5.0f * (s - 0.5f * (pairs-1));
 		text_lines(text[s], 2, &polygon8, (struct vec4){ at.x, at.y + dy, at.z, at.w },
-		           NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 }, ctx);
+		           NULL, COLOR_SCORE, ctx);
 	}
 }
 
@@ -370,20 +381,20 @@ static struct button button_start, button_exit;
 
 static void menu(struct draw_ctx *restrict ctx, struct vec4 at)
 {
-	rectangle(ctx, at, 4.5f, 2.8f, (struct color){ 0.05f, 0.05f, 0.05f, 0.8f });
+	rectangle(ctx, at, 4.5f, 2.8f, COLOR_BOX);
 	const float dy = 1.5f;
 
 	button_area_set(&button_start, (struct vec4){ at.x, at.y - dy, at.z, at.w }, 4.3f, 1.1f);
 	if (button_start.over)
-		rectangle(ctx, (struct vec4){ at.x, at.y - dy, at.z, at.w }, 4.3f, 1.1f, (struct color){ 0.5f, 0.5f, 0.5f, 0.8f });
+		rectangle(ctx, (struct vec4){ at.x, at.y - dy, at.z, at.w }, 4.3f, 1.1f, COLOR_HOVER);
 	draw_text(game_state == gs_play ? "СТОП":"СТАРТ", &polygon8, (struct vec4){ at.x, at.y - dy, at.z, at.w },
-	          NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 }, ctx);
+	          NULL, game_state == gs_play ? COLOR_STOP : COLOR_START, ctx);
 
 	button_area_set(&button_exit, (struct vec4){ at.x, at.y + dy, at.z, at.w }, 4.3f, 1.1f);
 	if (button_exit.over)
-		rectangle(ctx, (struct vec4){ at.x, at.y + dy, at.z, at.w }, 4.3f, 1.1f, (struct color){ 0.5f, 0.5f, 0.5f, 0.8f });
+		rectangle(ctx, (struct vec4){ at.x, at.y + dy, at.z, at.w }, 4.3f, 1.1f, COLOR_HOVER);
 	draw_text("ВЫХОД", &polygon8, (struct vec4){ at.x, at.y + dy, at.z, at.w },
-	          NULL, (struct color){ 0.9, 0.0, 0.0, 0.9 }, ctx);
+	          NULL, COLOR_EXIT, ctx);
 }
 
 static void intro(struct draw_ctx *restrict ctx, struct pos2d at)
@@ -408,9 +419,9 @@ static void intro(struct draw_ctx *restrict ctx, struct pos2d at)
 	};
 	const float iw = 26.0f;
 	const struct vec4 at4 = { at.x * iw, at.y * iw, 0.0f, iw };
-	rectangle(ctx, at4, 19.0f, 19.0f, (struct color){ 0.05f, 0.05f, 0.05f, 0.8f });
+	rectangle(ctx, at4, 19.0f, 19.0f, COLOR_BOX);
 	text_lines(rules, sizeof(rules)/sizeof(*rules), &polygon8, at4,
-	           NULL, (struct color){ 0.0, 0.9, 0.0, 0.9 }, ctx);
+	           NULL, COLOR_INTRO, ctx);
 }
 
 static void background(struct draw_ctx *restrict ctx)
@@ -419,7 +430,7 @@ static void background(struct draw_ctx *restrict ctx)
 	for (int y = -dot_cnt/aspect_ratio + 1; y < dot_cnt/aspect_ratio; y += 2)
 		for (int x = -dot_cnt + 1; x < dot_cnt; x += 2)
 			poly_draw(&square108, (struct vec4){ x, y, 0, dot_cnt },
-			          NULL, (struct color){ 0.1, 0.1, 0.1, 0.25 }, ctx);
+			          NULL, COLOR_BACKGROUND, ctx);
 }
 
 static void game_start(void)
