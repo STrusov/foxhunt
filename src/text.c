@@ -110,8 +110,7 @@ static inline unsigned glyphpopc(unsigned idx)
 }
 
 void draw_text(const char *str, const struct polygon *poly, struct vec4 at,
-               void(painter)(struct vertex*, struct color), struct color color,
-               struct draw_ctx *restrict ctx)
+               fn_painter painter, struct color color, struct draw_ctx *restrict ctx)
 {
 	int cnt;
 	// Предварительно подготавливаем индексы в массиве font и ширину глифов.
@@ -169,8 +168,7 @@ calc_line_width:
 }
 
 void text_lines(const char *const text[], int lines, const struct polygon *poly, struct vec4 at,
-               void(painter)(struct vertex*, struct color), struct color color,
-               struct draw_ctx *restrict ctx)
+               fn_painter painter, struct color color, struct draw_ctx *restrict ctx)
 {
 	assert(lines > 0);
 	for (int s = 0; s < lines; ++s) {

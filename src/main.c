@@ -36,12 +36,12 @@
 #define MAX_FOX_IN_CELL 2
 #endif
 
-#define COLOR_CELL      	((struct color){ 0.20f, 0.20f, 0.10f, 0.90f })
-#define COLOR_CELL_HOVER	((struct color){ 0.50f, 0.50f, 0.50f, 0.90f })
-#define COLOR_CELL_TEXT 	((struct color){ 0.20f, 0.95f, 0.20f, 0.95f })
+#define COLOR_CELL      	((struct color){ 0.00f, 0.00f, 0.10f, 0.85f })
+#define COLOR_CELL_HOVER	((struct color){ 0.30f, 0.30f, 0.30f, 0.85f })
+#define COLOR_CELL_TEXT 	((struct color){ 1.00f, 0.50f, 0.00f, 0.85f })
 #define COLOR_CELL_FOX  	((struct color){ 0.95f, 0.20f, 0.20f, 0.95f })
 #define COLOR_CELL_ANIM 	((struct color){ 0.20f, 0.20f, 0.20f, 0.95f })
-#define COLOR_BOX       	((struct color){ 0.05f, 0.05f, 0.05f, 0.80f })
+#define COLOR_BOX       	((struct color){ 0.00f, 0.00f, 0.00f, 0.85f })
 #define COLOR_HOVER     	((struct color){ 0.50f, 0.50f, 0.50f, 0.80f })
 #define COLOR_TITLE     	((struct color){ 0.00f, 0.90f, 0.00f, 0.90f })
 #define COLOR_INTRO     	((struct color){ 0.00f, 0.90f, 0.00f, 0.90f })
@@ -83,6 +83,9 @@ static int fox_count = 5;
 static int move_max = 99;
 static int fox_found;
 static int move;
+
+/** TODO вычислять из частоты кадров. */
+static int phase_per_sec = 60;
 
 enum game_state {
 	gs_intro,
@@ -131,7 +134,7 @@ static int check_cell(int x, int y, bool found)
 	struct board_cell *cell = board_at(x, y);
 	if (found)
 		--cell->visible;
-	cell->animation = 100;
+	cell->animation = phase_per_sec;
 	return cell->fox - cell->found;
 }
 
@@ -191,6 +194,28 @@ static bool board_over(float x, float y, uint32_t button, uint32_t state)
 	return true;
 }
 
+static int cell_phase;
+
+static inline void colorer_brd(struct vertex *restrict vert, struct color src, unsigned i)
+{
+	if (i) {
+		vert->color = src;
+	} else if (!cell_phase) {
+		vert->color.r = src.r * 2.0f;
+		vert->color.g = src.g * 2.0f;
+		vert->color.b = src.b * 2.0f;
+		vert->color.a = src.a;
+	} else {
+		float phase = (cell_phase > phase_per_sec/2
+		            ? (phase_per_sec - cell_phase) : cell_phase)
+		            / (float)(phase_per_sec/2);
+		vert->color.r = src.r + (1 - src.r) * phase;
+		vert->color.g = src.g + (1 - src.g) * phase;
+		vert->color.b = src.b + (1 - src.b) * phase;
+		vert->color.a = src.a;
+	}
+}
+
 static void board_draw(struct draw_ctx *restrict ctx)
 {
 	const float step = 2.0f;
@@ -204,15 +229,13 @@ static void board_draw(struct draw_ctx *restrict ctx)
 				.z = 0,
 				.w = board_size * aspect_ratio,
 			};
+			struct board_cell *cell = board_at(xc, yc);
+			if (cell->animation > 0)
+				--cell->animation;
+			cell_phase = cell->animation;
 			bool hover = xc == board_cell_x && yc == board_cell_y;
 			const struct color cc = hover ? COLOR_CELL_HOVER : COLOR_CELL;
-			poly_draw(&square094, at, NULL, cc, ctx);
-			struct board_cell *cell = board_at(xc, yc);
-			if (cell->animation > 0) {
-				--cell->animation;
-				char num[2] = { cell->fox + '*', '\x00' };
-				draw_text(num, &polygon8, at, NULL, COLOR_CELL_ANIM, ctx);
-			}
+			poly_draw(&square094, at, colorer_brd, cc, ctx);
 			if (cell->fox > 0) {
 				char num[2] = { cell->fox + '0', '\x00' };
 				draw_text(num, &polygon8, at, NULL, COLOR_CELL_FOX, ctx);
@@ -424,13 +447,49 @@ static void intro(struct draw_ctx *restrict ctx, struct pos2d at)
 	           NULL, COLOR_INTRO, ctx);
 }
 
+static float fsin(float a)
+{
+#if 0
+	return sinf(a);
+#else
+#define SINCACHE_SIZE 256
+	static float cache[2*SINCACHE_SIZE];
+	const float moda = fmodf(a, 2.0f * PI);
+	int indx = SINCACHE_SIZE + moda * ((float)SINCACHE_SIZE / (2.0f * PI));
+	assert(indx >= 0);
+	assert(indx < 2*SINCACHE_SIZE);
+	if (!cache[indx]) {
+		cache[indx] = sinf(moda);
+		// Нулевое значение не ошибка, однако приводит к постоянным вычислениям.
+		assert(cache[indx]);
+	}
+	return cache[indx];
+#undef SINCACHE_SIZE
+#endif
+}
+
+static float omega_bk;
+
+static inline void colorer(struct vertex *restrict vert, struct color src, unsigned i)
+{
+	if (!i) {
+		vert->color = src;
+	} else {
+		vert->color.r = src.r * (1.0f + fsin(vert->pos.x + omega_bk + i));
+		vert->color.g = src.g * (1.0f + fsin(vert->pos.y + omega_bk + i));
+		vert->color.b = src.b * (1.0f + fsin(vert->pos.x + vert->pos.y + omega_bk + i));
+		vert->color.a = src.a;
+	}
+}
+
 static void background(struct draw_ctx *restrict ctx)
 {
+	omega_bk = omega_bk < 2.0f*PI ? omega_bk + PI/512.0f : 0;
 	const int dot_cnt = aspect_ratio * board_size * 3;
 	for (int y = -dot_cnt/aspect_ratio + 1; y < dot_cnt/aspect_ratio; y += 2)
 		for (int x = -dot_cnt + 1; x < dot_cnt; x += 2)
 			poly_draw(&square108, (struct vec4){ x, y, 0, dot_cnt },
-			          NULL, COLOR_BACKGROUND, ctx);
+			          colorer, COLOR_BACKGROUND, ctx);
 }
 
 static void game_start(void)

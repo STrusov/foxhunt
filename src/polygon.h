@@ -21,7 +21,8 @@ const struct polygon polygon8;
 
 void poly_init(void);
 
+typedef void fn_painter(struct vertex*, struct color, unsigned);
+
 /** Параметр \stage определяет производится ли отрисовка, или определяются размеры буферов. */
 void poly_draw(const struct polygon *p, struct vec4 coordinate,
-               void(painter)(struct vertex*, struct color), struct color color,
-               struct draw_ctx *restrict ctx);
+               fn_painter, struct color color, struct draw_ctx *restrict ctx);

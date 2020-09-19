@@ -91,14 +91,13 @@ void poly_init()
 	dot_triangulate(&polygon8, 0.90);
 }
 
-static inline void color_copy(struct vertex *restrict vert, struct color src)
+static inline void color_copy(struct vertex *restrict vert, struct color src, unsigned i)
 {
 	vert->color = src;
 }
 
-void poly_draw(const struct polygon *p, struct vec4 coordinate,
-               void(painter)(struct vertex*, struct color), struct color color,
-               struct draw_ctx *restrict ctx)
+void poly_draw(const struct polygon *p, struct vec4 coordinate, fn_painter painter,
+               struct color color, struct draw_ctx *restrict ctx)
 {
 	if (!ctx->stage) {
 		ctx->vert_buf += p->vert_count;
@@ -112,7 +111,7 @@ void poly_draw(const struct polygon *p, struct vec4 coordinate,
 		ctx->vert_buf->pos.y = coordinate.y + p->vertex[i].y;
 		ctx->vert_buf->pos.z = coordinate.z;
 		ctx->vert_buf->pos.w = coordinate.w;
-		painter(ctx->vert_buf, color);
+		painter(ctx->vert_buf, color, i);
 		++ctx->vert_buf;
 	}
 	for (unsigned i = 0; i < p->tri_count; ++i) {
