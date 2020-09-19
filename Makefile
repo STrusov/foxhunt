@@ -19,6 +19,7 @@ ifneq ($(DEBUG),0)
     CFLAGS  := -DDEBUG -g $(CFLAGS) $(DEFINES)
 else
     CFLAGS  := -DNDEBUG -O2 -flto $(CFLAGS) $(DEFINES)
+    LDFLAGS := -flto $(LDFLAGS)
 endif
 
 WLPROTODIR := wlproto
