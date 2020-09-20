@@ -605,11 +605,13 @@ static void game_start(void)
 	time_init();
 	srand(start_time.tv_nsec ^ start_time.tv_sec);
 	board_init();
+	ay_music_select(1);
 }
 
 static void game_stop(void)
 {
 	game_state = gs_intro;
+	ay_music_select(0);
 }
 
 static bool draw_frame(void *p)

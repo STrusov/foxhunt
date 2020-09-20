@@ -266,10 +266,28 @@ void ay_music_play(void)
 	thrd_create(&player, music_thread, NULL);
 }
 
-const uint8_t music[] = {
+const uint8_t music_intro[] = {
 #include "../music/foxh.cps.inl"
 };
-static_assert(sizeof(music), "Отсутствуют данные музыки.");
+static_assert(sizeof(music_intro), "Отсутствуют данные музыки.");
+
+const uint8_t music_game[] = {
+#include "../music/music16.cps.inl"
+};
+static_assert(sizeof(music_game), "Отсутствуют данные музыки.");
+
+const uint8_t *musics[] = {
+	music_intro,
+	music_game,
+};
+
+static int current_music;
+
+void ay_music_select(int num)
+{
+	assert(num < sizeof(musics)/sizeof(*musics));
+	current_music = num;
+}
 
 typedef struct uint16_le {
 	uint8_t 	l;
@@ -348,7 +366,9 @@ int music_thread(void *p)
 	}
 	*pfq = 0;
 
-	const uint8_t *data = music;
+	const uint8_t *data;
+new_music:
+	data = musics[current_music];
 	const struct compose *hdr  = (void*)data;
 	struct channel channel[ay_channels] = {0};
 	unsigned position = 0;
@@ -493,6 +513,8 @@ play_music:
 			} // каналы
 			if (exit_player)
 				return 0;
+			if (data != musics[current_music])
+				goto new_music;
 			// Приостанавливаем воспроизведение, пока основной поток не возобновит.
 			if (pausable && --ticks <= 0) {
 				cnd_wait(&wake, &wake_mtx);
