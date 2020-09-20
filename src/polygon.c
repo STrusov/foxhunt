@@ -31,9 +31,6 @@ static void poly_triangulate(const struct polygon *p)
 {
 	struct tri_index *triangle = p->index;
 	unsigned idx = 0;
-#ifndef	NDEBUG
-	unsigned iter = 0, conv = 0;
-#endif
 	// Первые три вершины объединяем в треугольник.
 	triangle->v[0] = idx++;
 	triangle->v[1] = idx++;
@@ -41,9 +38,6 @@ static void poly_triangulate(const struct polygon *p)
 	++triangle;
 	// Последующие точки связываем с ближайшей стороной предыдущего треугольника.
 	for (; p->vert_count > 3 && idx <= p->vert_count; ++idx) {
-#ifndef	NDEBUG
-		++iter;
-#endif
 		assert((vert_index)idx == idx);
 		assert(triangle != &p->index[p->tri_count]);
 		struct tri_index *pt = triangle - 1;
@@ -56,20 +50,6 @@ static void poly_triangulate(const struct polygon *p)
 		++triangle;
 	}
 	assert(p->tri_count == triangle - p->index);
-#ifndef	NDEBUG
-	printf("Триангуляция: вершины (%u), треугольники (%u), итерации (%u), преобразования (%u)\n",
-			p->vert_count, p->tri_count, iter, conv);
-	for (int i = 0; i < p->tri_count; ++i) {
-		unsigned i0 = p->index[i].v[0];
-		unsigned i1 = p->index[i].v[1];
-		unsigned i2 = p->index[i].v[2];
-		printf("  {%u[%.2f;%.2f] %u[%.2f;%.2f] %u[%.2f;%.2f]}",
-				i0, p->vertex[i0].x, p->vertex[i0].y,
-				i1, p->vertex[i1].x, p->vertex[i1].y,
-				i2, p->vertex[i2].x, p->vertex[i2].y);
-	}
-	printf("\n");
-#endif
 }
 
 static void dot_triangulate(const struct polygon *p, float scale)

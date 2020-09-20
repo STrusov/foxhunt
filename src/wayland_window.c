@@ -585,7 +585,6 @@ static void draw_frame(void *p, struct wl_callback *cb, uint32_t time)
 
 static void on_xdg_surface_configure(void *p, struct xdg_surface *surface, uint32_t serial)
 {
-	printf("on_xdg_surface_configure\n");
 	struct window *window = p;
 	xdg_surface_ack_configure(surface, serial);
 	if (window->pending_resize) {
@@ -607,8 +606,6 @@ static void on_toplevel_configure(void *p, struct xdg_toplevel *toplevel,
                                   int32_t width, int32_t height, struct wl_array *states)
 {
 	struct window *window = p;
-	printf("Размер окна: %u*%u.\n", width, height);
-
 	// Нулевым параметром композитор указывает, что следует установить требуемый
 	// клиенту размер окна. Сигнализируем флажком для on_xdg_surface_configure().
 	// Иначе изменяем размер окна, если требуется.
@@ -652,7 +649,6 @@ static void on_toplevel_configure(void *p, struct xdg_toplevel *toplevel,
 static void on_toplevel_close(void *p, struct xdg_toplevel *toplevel)
 {
 	struct window *window = p;
-	printf("Закрытие.\n");
 	window->close = true;
 }
 

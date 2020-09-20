@@ -267,10 +267,6 @@ static void board_draw(struct draw_ctx *restrict ctx)
 			bool hover = xc == board_cell_x && yc == board_cell_y;
 			const struct color cc = hover ? COLOR_CELL_HOVER : COLOR_CELL;
 			poly_draw(&square094, at, colorer_brd, cc, ctx);
-			if (cell->fox > 0) {
-				char num[2] = { cell->fox + '0', '\x00' };
-				draw_text(num, &octagon150, at, NULL, COLOR_CELL_FOX, ctx);
-			}
 			if (cell->open > 0) {
 				char num[2] = { cell->visible + '0', '\x00' };
 				draw_text(num, &octagon150, at, colorer_cf, COLOR_CELL_TEXT, ctx);
@@ -775,7 +771,6 @@ int main(int argc, char *argv[])
 	wayland_stop();
 	ay_music_stop();
 
-	printf("Выход.\n");
 	return 0;
 }
 
