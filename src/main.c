@@ -1,20 +1,34 @@
 /**
- * Пример клиента Wayland основан на следующих работах:
+ * \mainpage	Охота на «лис»
  *
- * Drew DeVault "The Wayland Protocol"
- * https://wayland-book.com
+ * Программа основана на одноимённой публикации автора А. Несчетный
+ * в №12 журнала «Наука и Жизнь» за 1985 г
+ * и является переизданием [версии для ZX-Spectrum](https://zxart.ee/rus/soft/game/fox-hunt-ohota-na-lis/).
  *
- * Jan Newmarch "Programming Wayland Clients"
- * https://jan.newmarch.name/Wayland/
+ * Пример клиента Wayland основан на работах
+ * [«The Wayland Protocol»](https://wayland-book.com) Drew DeVault,
+ * [«Programming Wayland Clients»](https://jan.newmarch.name/Wayland/) Jan Newmarch и
+ * библиотеке [GLFW](https://www.glfw.org) ([авторы](https://github.com/glfw/glfw/blob/master/README.md#acknowledgements)).
  *
- * Библиотека GLFW https://www.glfw.org
- * https://github.com/glfw/glfw/blob/master/README.md
+ * Клиент Vulkan основан на
+ * [Vulkan Tutorial](https://vulkan-tutorial.com) ([авторы](https://github.com/Overv/VulkanTutorial/graphs/contributors)).
  *
+ * Эмулятор музыкального процессора AY-3-8912 основан на одной из ранних версий
+ * [UnrealSpeccy](https://speccy.info/UnrealSpeccy) (автор [SMT](https://speccy.info/SMT)).
  *
- * Клиент Vulkan основан на https://vulkan-tutorial.com
- * https://github.com/Overv/VulkanTutorial/graphs/contributors
+ * Используются музыкальные композиции Столяренко Е.В. (S.J. Soft).
  *
+ * Исходные тексты публикуются как достояние общественности (CC0) в той мере,
+ * в которой это не нарушает права авторов заимствованных фрагментов
+ * (UnrealSpeccy распространяется на условиях GPL, соответственно данное
+ * составное произведение может подпадать под GPL).
+ *
+ * \author Трусов С.А. <sergei.a.trusov@ya.ru>
+ *
+ * \file
+ * \brief Реализация игры «Охота на лис».
  */
+
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>

@@ -1,9 +1,13 @@
+/**\file
+ * \brief	Интерфейс клиента Wayland.
+ */
 
 #pragma once
 
 #include <stdbool.h>
 #include <wayland-client.h>
 
+/** Описывает окно. */
 struct window {
 	/** таблица функций интерфейса управления   */
 	const struct controller	*ctrl;
@@ -37,6 +41,7 @@ struct window {
 
 	bool                	pending_configure;
 	bool                	pending_resize;
+	/** Окно требует закрытия               */
 	bool                	close;
 };
 
@@ -59,8 +64,8 @@ struct controller {
 	void (*hover)(struct window *window, double x, double y, const char **cursor_name);
 
 	/** Изменилось состояние кнопки указательного устройства.
-	 * \button код из linux/input-event-codes.h (BTN_LEFT, BTN_RIGHT, BTN_MIDDLE)
-	 * \state состояние (0 — отпущена; 1 — нажата).
+	 * \param button код из linux/input-event-codes.h (BTN_LEFT, BTN_RIGHT, BTN_MIDDLE)
+	 * \param state состояние (0 — отпущена; 1 — нажата).
 	 */
 	bool (*click)(struct window *window, double x, double y,
 	              const char **cursor_name, uint32_t button, uint32_t state);

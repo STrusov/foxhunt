@@ -164,7 +164,7 @@ static void load_cursors()
 	cursor_theme = wl_cursor_theme_load(getenv("XCURSOR_THEME"), size, shared_mem);
 }
 
-///\name указатель на _статически_ аллоцированную строку (сохраняется без strdup)
+///\param name указатель на _статически_ аллоцированную строку (сохраняется без strdup)
 ///      либо NULL — для скрытия курсора.
 static bool set_cursor(struct seat_ctx *sx, const char *name)
 {
