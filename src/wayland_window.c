@@ -571,11 +571,14 @@ static void draw_frame(void *p, struct wl_callback *cb, uint32_t time)
 
 	struct window *w = p;
 	assert(w->render->draw_frame);
-	w->render->draw_frame(w->render_ctx);
-
-	// TODO Vulkan неявно вызывает нижеследующее в vkQueuePresentKHR();
-	static const struct wl_callback_listener nf = { draw_frame };
-	wl_callback_add_listener(wl_surface_frame(w->wl_surface), &nf, w);
+	bool next = false;
+	if (!w->close)
+		next = w->render->draw_frame(w->render_ctx);
+	if (next) {
+		// TODO Vulkan неявно вызывает нижеследующее в vkQueuePresentKHR();
+		static const struct wl_callback_listener nf = { draw_frame };
+		wl_callback_add_listener(wl_surface_frame(w->wl_surface), &nf, w);
+	}
 	wl_surface_commit(w->wl_surface);
 }
 
