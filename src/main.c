@@ -47,7 +47,7 @@
 #endif
 
 #ifndef MAX_FOX_IN_CELL
-#define MAX_FOX_IN_CELL 2
+#define MAX_FOX_IN_CELL 1
 #endif
 
 #define COLOR_CELL      	((struct color){ 0.00f, 0.00f, 0.10f, 0.85f })
@@ -265,7 +265,9 @@ static void board_draw(struct draw_ctx *restrict ctx)
 				--cell->animation;
 			cell_phase = cell->animation;
 			bool hover = xc == board_cell_x && yc == board_cell_y;
-			const struct color cc = hover ? COLOR_CELL_HOVER : COLOR_CELL;
+			struct color cc = hover ? COLOR_CELL_HOVER : COLOR_CELL;
+			if (cell->found)
+				cc.r += 0.30f;
 			poly_draw(&square094, at, colorer_brd, cc, ctx);
 			if (cell->open > 0) {
 				char num[2] = { cell->visible + '0', '\x00' };
