@@ -25,7 +25,7 @@ struct polygon {
 
 const struct polygon square094;
 const struct polygon square108;
-const struct polygon polygon8;
+const struct polygon octagon150;
 
 /** Инициализирует полигоны. */
 void poly_init(void);

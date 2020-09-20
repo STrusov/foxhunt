@@ -56,14 +56,19 @@
 #define COLOR_CELL_FOX  	((struct color){ 0.95f, 0.20f, 0.20f, 0.95f })
 #define COLOR_CELL_ANIM 	((struct color){ 0.20f, 0.20f, 0.20f, 0.95f })
 #define COLOR_BOX       	((struct color){ 0.00f, 0.00f, 0.00f, 0.85f })
+#define COLOR_BOX_A     	((struct color){ 0.00f, 0.00f, 0.00f, 0.70f })
 #define COLOR_HOVER     	((struct color){ 0.50f, 0.50f, 0.50f, 0.80f })
 #define COLOR_TITLE     	((struct color){ 0.00f, 0.90f, 0.00f, 0.90f })
+#define COLOR_AUTHORS   	((struct color){ 0.80f, 0.80f, 0.80f, 0.90f })
 #define COLOR_INTRO     	((struct color){ 0.00f, 0.90f, 0.00f, 0.90f })
 #define COLOR_SCORE     	((struct color){ 0.00f, 0.90f, 0.00f, 0.90f })
 #define COLOR_START     	((struct color){ 0.00f, 0.90f, 0.00f, 0.90f })
 #define COLOR_STOP      	((struct color){ 0.90f, 0.90f, 0.00f, 0.90f })
 #define COLOR_EXIT      	((struct color){ 0.90f, 0.00f, 0.00f, 0.90f })
 #define COLOR_BACKGROUND	((struct color){ 0.10f, 0.10f, 0.10f, 0.25f })
+
+const char game_name[] = "Охота на лис";
+const char game_version[] = "0.10-альфа";
 
 const float aspect_ratio = 4.0/3.0;
 //const float aspect_ratio = 16.0/9.0;
@@ -230,6 +235,18 @@ static inline void colorer_brd(struct vertex *restrict vert, struct color src, u
 	}
 }
 
+static inline void colorer_cf(struct vertex *restrict vert, struct color src, unsigned i)
+{
+	if (i) {
+		vert->color = src;
+	} else {
+		vert->color.r = src.r;
+		vert->color.g = src.g;
+		vert->color.b = src.b;
+		vert->color.a = 0.7f * src.a;
+	}
+}
+
 static void board_draw(struct draw_ctx *restrict ctx)
 {
 	const float step = 2.0f;
@@ -252,11 +269,11 @@ static void board_draw(struct draw_ctx *restrict ctx)
 			poly_draw(&square094, at, colorer_brd, cc, ctx);
 			if (cell->fox > 0) {
 				char num[2] = { cell->fox + '0', '\x00' };
-				draw_text(num, &polygon8, at, NULL, COLOR_CELL_FOX, ctx);
+				draw_text(num, &octagon150, at, NULL, COLOR_CELL_FOX, ctx);
 			}
 			if (cell->open > 0) {
 				char num[2] = { cell->visible + '0', '\x00' };
-				draw_text(num, &polygon8, at, NULL, COLOR_CELL_TEXT, ctx);
+				draw_text(num, &octagon150, at, colorer_cf, COLOR_CELL_TEXT, ctx);
 			}
 		}
 	}
@@ -286,15 +303,51 @@ static void rectangle(struct draw_ctx *restrict ctx,
 	ctx->indx_buf += 6;
 }
 
+static float fsin(float a)
+{
+#if 0
+	return sinf(a);
+#else
+#define SINCACHE_SIZE 256
+	static float cache[2*SINCACHE_SIZE];
+	const float moda = fmodf(a, 2.0f * PI);
+	int indx = SINCACHE_SIZE + moda * ((float)SINCACHE_SIZE / (2.0f * PI));
+	assert(indx >= 0);
+	assert(indx < 2*SINCACHE_SIZE);
+	if (!cache[indx]) {
+		cache[indx] = sinf(moda);
+		// Нулевое значение не ошибка, однако приводит к постоянным вычислениям.
+		assert(cache[indx]);
+	}
+	return cache[indx];
+#undef SINCACHE_SIZE
+#endif
+}
+
+static float omega_title;
+
+static inline void colorer_title(struct vertex *restrict vert, struct color src, unsigned i)
+{
+	if (!i) {
+		vert->color = src;
+	} else {
+		vert->color.r = 0.5f * (1.0f + fsin(vert->pos.x + omega_title * i));
+		vert->color.g = 0.5f * (1.0f + fsin(omega_title + i));
+		vert->color.b = 0.5f * (1.0f + fsin(vert->pos.y + omega_title + i));
+		vert->color.a = src.a;
+	}
+}
+
 static void title(struct draw_ctx *restrict ctx, struct vec4 at)
 {
-	rectangle(ctx, at, 4.5f, 2.5f, COLOR_BOX);
+	omega_title = omega_title < 2.0f*PI ? omega_title + PI/1024.0f : 0;
+	rectangle(ctx, at, 4.53f, 2.5f, COLOR_BOX);
 	static const char *const text[] = {
 		"ОХОТА",
 		"НА ЛИС",
 	};
-	text_lines(text, sizeof(text)/sizeof(*text), &polygon8, at,
-	           NULL, COLOR_TITLE, ctx);
+	text_lines(text, sizeof(text)/sizeof(*text), &octagon150, at,
+	           colorer_title, COLOR_TITLE, ctx);
 }
 
 static void time_init()
@@ -366,8 +419,8 @@ static void score(struct draw_ctx *restrict ctx, struct vec4 at)
 	const int pairs = sizeof(text)/sizeof(*text);
 	for (int s = 0; s < pairs; ++s) {
 		const float dy = 5.0f * (s - 0.5f * (pairs-1));
-		text_lines(text[s], 2, &polygon8, (struct vec4){ at.x, at.y + dy, at.z, at.w },
-		           NULL, COLOR_SCORE, ctx);
+		text_lines(text[s], 2, &octagon150, (struct vec4){ at.x, at.y + dy, at.z, at.w },
+				colorer_cf, COLOR_SCORE, ctx);
 	}
 }
 
@@ -424,62 +477,104 @@ static void menu(struct draw_ctx *restrict ctx, struct vec4 at)
 	button_area_set(&button_start, (struct vec4){ at.x, at.y - dy, at.z, at.w }, 4.3f, 1.1f);
 	if (button_start.over)
 		rectangle(ctx, (struct vec4){ at.x, at.y - dy, at.z, at.w }, 4.3f, 1.1f, COLOR_HOVER);
-	draw_text(game_state == gs_play ? "СТОП":"СТАРТ", &polygon8, (struct vec4){ at.x, at.y - dy, at.z, at.w },
-	          NULL, game_state == gs_play ? COLOR_STOP : COLOR_START, ctx);
+	draw_text(game_state == gs_play ? "СТОП":"СТАРТ", &octagon150, (struct vec4){ at.x, at.y - dy, at.z, at.w },
+	          colorer_cf, game_state == gs_play ? COLOR_STOP : COLOR_START, ctx);
 
 	button_area_set(&button_exit, (struct vec4){ at.x, at.y + dy, at.z, at.w }, 4.3f, 1.1f);
 	if (button_exit.over)
 		rectangle(ctx, (struct vec4){ at.x, at.y + dy, at.z, at.w }, 4.3f, 1.1f, COLOR_HOVER);
-	draw_text("ВЫХОД", &polygon8, (struct vec4){ at.x, at.y + dy, at.z, at.w },
-	          NULL, COLOR_EXIT, ctx);
+	draw_text("ВЫХОД", &octagon150, (struct vec4){ at.x, at.y + dy, at.z, at.w },
+	          colorer_cf, COLOR_EXIT, ctx);
+}
+
+static float omega_intro;
+static struct color color_rt[9];
+
+static inline void colorer_rt(struct vertex *restrict vert, struct color src, unsigned i)
+{
+	vert->color = color_rt[i];
+}
+
+static inline void colorer_c(struct vertex *restrict vert, struct color src, unsigned i)
+{
+	if (i) {
+		vert->color = src;
+	} else {
+		vert->color.r = src.r * 0.5f * (1.0f + fsin(vert->pos.x + omega_intro));
+		vert->color.g = src.g * 0.5f * (1.0f + fsin(vert->pos.y + omega_intro));
+		vert->color.b = src.b * 0.5f * (1.0f + fsin(vert->pos.x + vert->pos.y + omega_intro));
+		vert->color.a = src.a;
+	}
 }
 
 static void intro(struct draw_ctx *restrict ctx, struct pos2d at)
 {
-	const static char *const rules[] = {
-		"В СЛУЧАЙНЫХ КЛЕТКАХ",
-		"РАСПОЛАГАЮТСЯ \"ЛИСЫ\" -",
-		"РАДИОПЕРЕДАТЧИКИ,",
-		"ПОСЫЛАЮЩИЕ В ЭФИР",
-		"СИГНАЛ \"Я ЗДЕСЬ\".",
-		"\"ОХОТНИК\" ВООРУЖЕН",
-		"ПЕЛЕНГАТОРОМ, ИМЕЮЩИМ",
-		"НАПРАВЛЕННУЮ АНТЕНУ,",
-		"ТАК ЧТО СИГНАЛЫ \"ЛИС\"",
-		"ПРИНИМАЮТСЯ ПО ВЕРТИКАЛИ,",
-		"ГОРИЗОНТАЛИ И ДИАГОНАЛЯМ.",
-		"ЦЕЛЬ:",
-		"ОБНАРУЖИТЬ \"ЛИС\" ЗА",
-		"МИНИМАЛЬНОЕ ЧИСЛО ХОДОВ.",
-		"НАЙДЕННАЯ \"ЛИСА\"",
-		"СНИМАЕТСЯ С ПОЛЯ.",
-	};
-	const float iw = 26.0f;
-	const struct vec4 at4 = { at.x * iw, at.y * iw, 0.0f, iw };
-	rectangle(ctx, at4, 19.0f, 19.0f, COLOR_BOX);
-	text_lines(rules, sizeof(rules)/sizeof(*rules), &polygon8, at4,
-	           NULL, COLOR_INTRO, ctx);
-}
-
-static float fsin(float a)
-{
-#if 0
-	return sinf(a);
-#else
-#define SINCACHE_SIZE 256
-	static float cache[2*SINCACHE_SIZE];
-	const float moda = fmodf(a, 2.0f * PI);
-	int indx = SINCACHE_SIZE + moda * ((float)SINCACHE_SIZE / (2.0f * PI));
-	assert(indx >= 0);
-	assert(indx < 2*SINCACHE_SIZE);
-	if (!cache[indx]) {
-		cache[indx] = sinf(moda);
-		// Нулевое значение не ошибка, однако приводит к постоянным вычислениям.
-		assert(cache[indx]);
+	omega_intro = omega_intro < 2.0f*PI ? omega_intro + PI/256.0f : 0;
+	static int seconds;
+	if (!ctx->stage) {
+		if (--seconds < 0)
+			seconds = phase_per_sec * 20;
 	}
-	return cache[indx];
-#undef SINCACHE_SIZE
-#endif
+	if (seconds > phase_per_sec * 5) {
+		const static char *const rules[] = {
+			"В случайных клетках",
+			"располагаются \"лисы\" -",
+			"радиопередатчики,",
+			"посылающие в эфир",
+			"сигнал \"я здесь\".",
+			"\"Охотник\" вооружен",
+			"пеленгатором, имеющим",
+			"направленную антенну,",
+			"так что сигналы \"лис\"",
+			"принимаются по вертикали,",
+			"горизонтали и диагоналям.",
+			"Цель:",
+			"обнаружить \"лис\" за",
+			"минимальное число ходов.",
+			"Найденная \"лиса\"",
+			"снимается с поля.",
+		};
+		const float iw = 26.0f;
+		const struct vec4 at4 = { at.x * iw, at.y * iw, 0.0f, iw };
+		rectangle(ctx, at4, 19.0f, 19.0f, COLOR_BOX);
+		struct color ca = COLOR_INTRO;
+		if (seconds < phase_per_sec * 6)
+			ca.a = ca.a * (seconds - phase_per_sec * 5) / (float)phase_per_sec;
+		else if (seconds > phase_per_sec * 19)
+			ca.a = ca.a * (phase_per_sec * 20 - seconds) / (float)phase_per_sec;
+		color_rt[0] = ca;
+		for (int i = 1; i <= 8; ++i) {
+			color_rt[i].r = 0.5f * (1.0f + fsin(omega_intro + i));
+			color_rt[i].g = 0.5f * (1.0f + fsin(omega_intro + i));
+			color_rt[i].b = 0.5f * (1.0f + fsin(omega_intro + i));
+			color_rt[i].a = ca.a;
+		}
+		text_lines(rules, sizeof(rules)/sizeof(*rules), &octagon150, at4,
+		           colorer_rt, ca, ctx);
+	} else {
+		const static char *const authors[] = {
+			"Авторы",
+			"",
+			"ИДЕЯ/МК-61\x17",
+			"\x17А. Несчетный",
+			"",
+			"Реализация\x12\xd",
+			"\x1e\xbС. Трусов",
+			"",
+			"Музыка\x1e\x16",
+			"\x12Е. Столяренко",
+		};
+		const float iw = 18.0f;
+		const struct vec4 at4 = { at.x * iw, at.y * iw, 0.0f, iw };
+		rectangle(ctx, at4, 13.0f, 13.0f, COLOR_BOX_A);
+		struct color ca = COLOR_AUTHORS;
+		if (seconds < phase_per_sec)
+			ca.a = ca.a * seconds / (float)phase_per_sec;
+		else if (seconds > phase_per_sec * 4)
+			ca.a = ca.a * (phase_per_sec * 5 - seconds) / (float)phase_per_sec;
+		text_lines(authors, sizeof(authors)/sizeof(*authors), &octagon150, at4,
+		           colorer_c, ca, ctx);
+	}
 }
 
 static float omega_bk;
@@ -646,6 +741,8 @@ static const struct controller controller = {
 
 int main(int argc, char *argv[])
 {
+	printf("«%s» версия %s.\n", game_name, game_version);
+
 	ay_music_init();
 	ay_music_play();
 
@@ -662,7 +759,7 @@ int main(int argc, char *argv[])
 	struct window window = {
 		.ctrl 	= &controller,
 		.render	= &vulkan,
-		.title	= "Окно",
+		.title	= game_name,
 		.width	= 800,
 //		.height	= 600,
 		.border = 10,

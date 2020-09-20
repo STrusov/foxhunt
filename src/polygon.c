@@ -19,7 +19,7 @@ const struct polygon square108 = {
 	.tri_count  = 4,
 };
 
-const struct polygon polygon8 = {
+const struct polygon octagon150 = {
 	.vertex     = (struct pos2d     [9]) {},
 	.index      = (struct tri_index [8]) {},
 	.vert_count = 9,
@@ -88,7 +88,7 @@ void poly_init()
 {
 	dot_triangulate(&square094, 0.94f * 1.414213562f); // √2
 	dot_triangulate(&square108, 1.08f * 1.414213562f); // √2
-	dot_triangulate(&polygon8, 0.90);
+	dot_triangulate(&octagon150, 1.5);
 }
 
 static inline void color_copy(struct vertex *restrict vert, struct color src, unsigned i)
