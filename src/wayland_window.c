@@ -684,6 +684,7 @@ void window_create(struct window *window)
 	window->toplevel = xdg_surface_get_toplevel(window->xdg_surface);
 	xdg_toplevel_add_listener(window->toplevel, &toplevel_listener, window);
 	xdg_toplevel_set_title(window->toplevel, window->title);
+	xdg_toplevel_set_app_id(window->toplevel, window->title);
 
 	assert(window->render);
 	assert(window->render->create);
