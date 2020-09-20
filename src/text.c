@@ -120,11 +120,20 @@ void draw_text(const char *str, const struct polygon *poly, struct vec4 at,
 	int line_width = 0;
 	for (cnt = 0; *str; ++str, ++cnt) {
 		assert(cnt <= 32);
-		// Юникод диапазон А..Я в UTF-8 кодируется 0xd0 0x90 .. 0xd0 0xaf
+		// Юникод диапазоны в UTF-8 кодируются:
+		// А..Я — 0xd0 0x90 .. 0xd0 0xaf
+		// a..п — 0xd0 0xb0 .. 0xd0 0xbf
+		// р..я — 0xd1 0x80 .. 0xd1 0x8f
 		if (*str == (char)0xd0) {
 			char c2 = 0x7f & *++str;
+			if (c2 >= 0x30)
+				c2 -= 0x20;
 			assert(c2 >= 0x10 && c2 <= 0x2f);
 			glidx[cnt] = glyph_cyrillic + c2 - 0x10;
+		} else if (*str == (char)0xd1) {
+			char c2 = (0x7f & *++str) + 0x10;
+			assert(c2 >= 0x10 && c2 <= 0x1f);
+			glidx[cnt] = glyph_cyrillic + c2;
 		} else if (*str >= ' ') {
 			glidx[cnt] = *str - ' ';
 		} else {
