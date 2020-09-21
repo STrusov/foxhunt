@@ -52,7 +52,18 @@ static VkInstance	instance;
 
 VkResult vk_init(void)
 {
+#ifdef ENABLE_VK_VALIDATION
+	struct VkInstanceCreateInfo ii = instinfo;
+	VkResult r = vkCreateInstance(&ii, allocator, &instance);
+	if (r == VK_ERROR_LAYER_NOT_PRESENT) {
+		printf("Отсутствует валидатор Vulkan %s.\n", validation_layers[0]);
+		ii.enabledLayerCount = 0;
+		r = vkCreateInstance(&ii, allocator, &instance);
+	}
+
+#else
 	VkResult r = vkCreateInstance(&instinfo, allocator, &instance);
+#endif
 	if (r == VK_SUCCESS)
 		printf("Инициализация Vulkan:\n");
 	return r;
