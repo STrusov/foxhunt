@@ -743,8 +743,9 @@ int main(int argc, char *argv[])
 {
 	printf("«%s» версия %s.\n", game_name, game_version);
 
-	ay_music_init();
-	ay_music_play();
+	bool music = ay_music_init() >= 0;
+	if (music)
+		ay_music_play();
 
 	if (!wayland_init())
 		return 1;
@@ -773,7 +774,9 @@ int main(int argc, char *argv[])
 
 	vk_stop();
 	wayland_stop();
-	ay_music_stop();
+
+	if (music)
+		ay_music_stop();
 
 	return 0;
 }
