@@ -155,8 +155,8 @@ static int pcm_init(void)
 	int r, dir = 0;
 	snd_pcm_hw_params_t *hwparams;
 	snd_pcm_hw_params_alloca(&hwparams);
-	static const char *dev[2] = { "hw", "default" };
-	for (int i = 0; i < 2; ++i) {
+	static const char *const dev[3] = { "hw", "default", "pulse" };
+	for (int i = 0; i < sizeof(dev)/sizeof(*dev); ++i) {
 		snd_pcm_t *pcm0 = pcm;
 		r = snd_pcm_open(&pcm, dev[i], SND_PCM_STREAM_PLAYBACK, 0);
 		if (r >= 0) {
@@ -174,9 +174,13 @@ static int pcm_init(void)
 			snd_pcm_hw_params_get_buffer_size(hwparams, &buffer_size);
 			r = snd_pcm_hw_params(pcm, hwparams);
 		}
-		printf("Звуковое устройство %s: %u канала, %u Гц (буфер %lu дискретизаций, сэмпл %g мс).\n",
-		       r >= 0 ? dev[i] : snd_strerror(r),
-		       channels, sample_rate, buffer_size, period_time/1000.0);
+		if (r >= 0)
+			printf("Звуковое устройство %s: %u канала, %u Гц (буфер %lu дискретизаций, сэмпл %g мс).\n",
+			       dev[i], channels, sample_rate, buffer_size, period_time/1000.0);
+		else
+			printf("Звуковое устройство %s: %s.\n", dev[i], snd_strerror(r));
+		if (i && r >= 0)
+			break;
 	}
 	snd_pcm_sw_params_t *swparams;
 	snd_pcm_sw_params_alloca(&swparams);
