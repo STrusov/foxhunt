@@ -11,11 +11,15 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <linux/input-event-codes.h>
 
 #include <wayland-cursor.h>
 #include "xdg-shell-client-protocol.h"
 
 #include "wayland_window.h"
+
+/** Количество одновременно обрабатываемых касаний. */
+#define TOUCH_POINTS 10
 
 /**
  * Ключевой объект для связи с сервером.
@@ -54,6 +58,11 @@ const char                 	*seat_name;
  * Указательное устройство (мышь).
  */
 static struct wl_pointer   	*pointer;
+
+/**
+ * Сенсорное устройство ввода.
+ */
+static struct wl_touch     	*touch;
 
 /**
  * Набор курсоров.
@@ -110,7 +119,6 @@ static const struct xdg_wm_base_listener wm_base_listener = {
 	.ping = &on_wm_base_ping,
 };
 
-
 struct seat_ctx {
 	struct window	*pointer_focus;
 	uint32_t     	pointer_focus_serial;
@@ -135,6 +143,15 @@ struct seat_ctx {
 		pointer_axis_stop    	= 1 << 8,
 		pointer_axis_discrete	= 1 << 10,
 	}            	pointer_event;
+
+	struct touch_point {
+		struct window	*focus;
+		uint32_t     	serial;
+		uint32_t     	time;
+		wl_fixed_t   	x;
+		wl_fixed_t   	y;
+		int32_t      	id;
+	}            	touch[TOUCH_POINTS];
 };
 
 static struct seat_ctx seat_ctx;
@@ -452,6 +469,117 @@ static const struct wl_pointer_listener pointer_listener = {
 	.axis_discrete	= on_pointer_axis_discrete,
 };
 
+
+static struct touch_point* touch_point_by_id(struct seat_ctx *sctx, int32_t id)
+{
+	for (int i = 0; i < TOUCH_POINTS; ++i)
+		if (id == sctx->touch[i].id)
+			return &sctx->touch[i];
+	return NULL;
+}
+
+static inline struct touch_point* touch_point_new(struct seat_ctx *sctx)
+{
+	for (int i = 0; i < TOUCH_POINTS; ++i)
+		if (!sctx->touch[i].focus)
+			return &sctx->touch[i];
+	return NULL;
+}
+
+/** Нажатие на сенсор, начало последовательности. */
+static void on_touch_down(void *p, struct wl_touch *touch, uint32_t serial, uint32_t time,
+                          struct wl_surface *surface, int32_t id, wl_fixed_t x, wl_fixed_t y)
+{
+	struct seat_ctx *sctx = p;
+	struct touch_point *tp = touch_point_new(sctx);
+	assert(tp);
+	if (!tp)
+		return;
+	// До события up получаемые данные соответствуют данному окну.
+	tp->focus  = wl_surface_get_user_data(surface);
+	assert(tp->focus);
+	tp->serial = serial;
+	tp->time = time;
+	tp->x = x;
+	tp->y = y;
+	tp->id = id;
+
+	struct window *window = tp->focus;
+	// При наличии обработчика вызываем его, иначе эмулируем щелчёк указателем.
+	if (window->ctrl) {
+		const double x = wl_fixed_to_double(tp->x);
+		const double y = wl_fixed_to_double(tp->y);
+		if (window->ctrl->touch) {
+			window->ctrl->touch(window, x, y);
+		} else if (window->ctrl->click) {
+			const char *dummy_cursor;
+			window->ctrl->click(window, x, y, &dummy_cursor, BTN_LEFT, 1);
+			window->ctrl->click(window, x, y, &dummy_cursor, BTN_LEFT, 0);
+		}
+	}
+}
+
+/** Касание с идентификатором id завершено. */
+static void on_touch_up(void *p, struct wl_touch *touch, uint32_t serial,
+                        uint32_t time, int32_t id)
+{
+	struct seat_ctx *sctx = p;
+	struct touch_point *tp = touch_point_by_id(sctx, id);
+	assert(tp);
+	if (!tp)
+		return;
+	assert(tp->focus);
+	tp->focus = NULL;
+}
+
+/** Точка касания переместилась. */
+static void on_touch_motion(void *p, struct wl_touch *touch, uint32_t time,
+                            int32_t id, wl_fixed_t x, wl_fixed_t y)
+{
+	struct seat_ctx *sctx = p;
+	struct touch_point *tp = touch_point_by_id(sctx, id);
+	assert(tp);
+	if (!tp)
+		return;
+}
+
+/** Отмена текущей последовательности событий. */
+static void on_touch_cancel(void *p, struct wl_touch *touch)
+{
+	struct seat_ctx *sctx = p;
+	for (int i = 0; i < TOUCH_POINTS; ++i)
+		sctx->touch[i].focus = NULL;
+}
+
+/** Изменена форма точки касания. */
+static void on_touch_shape(void *p, struct wl_touch *touch, int32_t id,
+                           wl_fixed_t major, wl_fixed_t minor)
+{
+}
+
+/** Изменена ориентация точки касания. */
+static void on_touch_orientation(void *p, struct wl_touch *touch,
+                                 int32_t id, wl_fixed_t orientation)
+{
+}
+
+/** Данные от устройства переданы в количестве необходимом для обработки. */
+static void on_touch_frame(void *p, struct wl_touch *wl_touch)
+{
+	// TODO Mutter 3.36.3 не всегда генерирует событие.
+}
+
+static const struct wl_touch_listener touch_listener = {
+	.down       	= on_touch_down,
+	.up         	= on_touch_up,
+	.motion     	= on_touch_motion,
+	.frame      	= on_touch_frame,
+	.cancel     	= on_touch_cancel,
+	.shape      	= on_touch_shape,
+	.orientation	= on_touch_orientation,
+};
+
+
 static void seat_capabilities(void *p, struct wl_seat *seat, uint32_t capabilities)
 {
 	struct seat_ctx *inp = p;
@@ -463,6 +591,15 @@ static void seat_capabilities(void *p, struct wl_seat *seat, uint32_t capabiliti
 		printf("Отключено указательное устройство.\n");
 		wl_pointer_destroy(pointer);
 		pointer = NULL;
+	}
+	if (capabilities & WL_SEAT_CAPABILITY_TOUCH && !touch) {
+		printf("Подключено сенсорное устройство ввода.\n");
+		touch = wl_seat_get_touch(seat);
+		wl_touch_add_listener(touch, &touch_listener, inp);
+	} else if (touch && !(capabilities & WL_SEAT_CAPABILITY_TOUCH)) {
+		printf("Отключено сенсорное устройство ввода.\n");
+		wl_touch_destroy(touch);
+		touch = NULL;
 	}
 }
 

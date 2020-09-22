@@ -66,9 +66,13 @@ struct controller {
 	/** Изменилось состояние кнопки указательного устройства.
 	 * \param button код из linux/input-event-codes.h (BTN_LEFT, BTN_RIGHT, BTN_MIDDLE)
 	 * \param state состояние (0 — отпущена; 1 — нажата).
+	 * \return true если событие обработано.
 	 */
 	bool (*click)(struct window *window, double x, double y,
 	              const char **cursor_name, uint32_t button, uint32_t state);
+
+	/** Нажатие на сенсорный экран. */
+	void (*touch)(struct window *window, double x, double y);
 };
 
 /** Инициализирует сеанс и интерфейсы для связи с сервером. */
