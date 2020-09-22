@@ -60,8 +60,10 @@ struct render {
 
 /** Интерфейс взаимодействия с устройствами ввода */
 struct controller {
-	/** Указатель над окном. Выход за пределы сигнализируется отрицательной координатой. */
-	void (*hover)(struct window *window, double x, double y, const char **cursor_name);
+	/** Указатель над окном. Выход за пределы сигнализируется отрицательной координатой.
+	 * \return true если указатель над элементом управления.
+	 */
+	bool (*hover)(struct window *window, double x, double y, const char **cursor_name);
 
 	/** Изменилось состояние кнопки указательного устройства.
 	 * \param button код из linux/input-event-codes.h (BTN_LEFT, BTN_RIGHT, BTN_MIDDLE)

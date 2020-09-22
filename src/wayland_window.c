@@ -541,6 +541,24 @@ static void on_touch_motion(void *p, struct wl_touch *touch, uint32_t time,
 	assert(tp);
 	if (!tp)
 		return;
+	tp->time = time;
+	tp->x = x;
+	tp->y = y;
+
+	struct window *window = tp->focus;
+	enum xdg_toplevel_resize_edge re = resize_edge(window, wl_fixed_to_int(x), wl_fixed_to_int(y));
+	if (re != XDG_TOPLEVEL_RESIZE_EDGE_NONE) {
+		xdg_toplevel_resize(window->toplevel, seat, tp->serial, re);
+	} else {
+		bool hc = false;
+		if (window->ctrl && window->ctrl->hover) {
+			const char *dummy_cursor;
+			hc = window->ctrl->hover(window, wl_fixed_to_double(x),
+			                         wl_fixed_to_double(y), &dummy_cursor);
+		}
+		if (!hc)
+			xdg_toplevel_move(window->toplevel, seat, tp->serial);
+	}
 }
 
 /** Отмена текущей последовательности событий. */

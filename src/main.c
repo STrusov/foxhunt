@@ -294,6 +294,8 @@ static void board_draw(struct draw_ctx *restrict ctx)
 			}
 		}
 	}
+	board_cell_x = -1;
+	board_cell_y = -1;
 }
 
 static void rectangle(struct draw_ctx *restrict ctx,
@@ -741,10 +743,11 @@ over:
 }
 
 static
-void pointer_over(struct window *window, double x, double y, const char **cursor_name)
+bool pointer_over(struct window *window, double x, double y, const char **cursor_name)
 {
-	pointer_click(window, x, y, cursor_name, 0, 0);
+	return pointer_click(window, x, y, cursor_name, 0, 0);
 }
+
 
 static const struct render vulkan = {
 	.create    	= vk_window_create,
