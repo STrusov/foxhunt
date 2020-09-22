@@ -5,27 +5,6 @@
 
 #include "polygon.h"
 
-const struct polygon square094 = {
-	.vertex     = (struct pos2d     [5]) {},
-	.index      = (struct tri_index [4]) {},
-	.vert_count = 5,
-	.tri_count  = 4,
-};
-
-const struct polygon square108 = {
-	.vertex     = (struct pos2d     [5]) {},
-	.index      = (struct tri_index [4]) {},
-	.vert_count = 5,
-	.tri_count  = 4,
-};
-
-const struct polygon octagon150 = {
-	.vertex     = (struct pos2d     [9]) {},
-	.index      = (struct tri_index [8]) {},
-	.vert_count = 9,
-	.tri_count  = 8,
-};
-
 /** Заполняет массив индексов, строя триангуляцию для заданных вершин. */
 static void poly_triangulate(const struct polygon *p)
 {
@@ -52,7 +31,7 @@ static void poly_triangulate(const struct polygon *p)
 	assert(p->tri_count == triangle - p->index);
 }
 
-static void dot_triangulate(const struct polygon *p, float scale)
+void poly_init(const struct polygon *p, float scale)
 {
 	p->vertex[0].x = 0;
 	p->vertex[0].y = 0;
@@ -62,13 +41,6 @@ static void dot_triangulate(const struct polygon *p, float scale)
 		p->vertex[i].y = scale * sinf((2*i + 1) * PI/ccnt);
 	}
 	poly_triangulate(p);
-}
-
-void poly_init()
-{
-	dot_triangulate(&square094, 0.94f * 1.414213562f); // √2
-	dot_triangulate(&square108, 1.08f * 1.414213562f); // √2
-	dot_triangulate(&octagon150, 1.5);
 }
 
 static inline void color_copy(struct vertex *restrict vert, struct color src, unsigned i)

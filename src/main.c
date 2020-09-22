@@ -113,6 +113,25 @@ enum game_state {
 };
 static enum game_state game_state = gs_intro;
 
+static const struct polygon square094 = {
+	.vertex     = (struct pos2d     [5]) {},
+	.index      = (struct tri_index [4]) {},
+	.vert_count = 5,
+	.tri_count  = 4,
+};
+static const struct polygon square108 = {
+	.vertex     = (struct pos2d     [5]) {},
+	.index      = (struct tri_index [4]) {},
+	.vert_count = 5,
+	.tri_count  = 4,
+};
+static const struct polygon octagon150 = {
+	.vertex     = (struct pos2d     [9]) {},
+	.index      = (struct tri_index [8]) {},
+	.vert_count = 9,
+	.tri_count  = 8,
+};
+
 static int board_cell_x = -1;
 static int board_cell_y = -1;
 
@@ -750,10 +769,12 @@ int main(int argc, char *argv[])
 	if (!wayland_init())
 		return 1;
 
+	poly_init(&square094, 0.94f * 1.414213562f); // √2
+	poly_init(&square108, 1.08f * 1.414213562f); // √2
+	poly_init(&octagon150, 1.5);
+
 	if (vk_init() != VK_SUCCESS)
 		return 2;
-
-	poly_init();
 
 	time_init();
 

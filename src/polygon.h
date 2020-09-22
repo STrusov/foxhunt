@@ -23,12 +23,8 @@ struct polygon {
 	fast_index      	tri_count;
 };
 
-const struct polygon square094;
-const struct polygon square108;
-const struct polygon octagon150;
-
-/** Инициализирует полигоны. */
-void poly_init(void);
+/** Вычисляет вершины и индексы формирующих многоугольник треугольников. */
+void poly_init(const struct polygon *p, float scale);
 
 /** Используется для окрашивания вершин.
  * \param color	базовый цвет.
