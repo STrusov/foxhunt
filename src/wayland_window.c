@@ -546,9 +546,26 @@ static void on_touch_motion(void *p, struct wl_touch *touch, uint32_t time,
 	tp->y = y;
 
 	struct window *window = tp->focus;
-	enum xdg_toplevel_resize_edge re = resize_edge(window, wl_fixed_to_int(x), wl_fixed_to_int(y));
-	if (re != XDG_TOPLEVEL_RESIZE_EDGE_NONE) {
-		xdg_toplevel_resize(window->toplevel, seat, tp->serial, re);
+	const int xpix = wl_fixed_to_int(x);
+	const int ypix = wl_fixed_to_int(y);
+	// Если имеется 2е касание на той же поверхности, изменяем размер.
+	for (int i = 0; i < TOUCH_POINTS; ++i)
+		if (window == sctx->touch[i].focus && id != sctx->touch[i].id) {
+			enum xdg_toplevel_resize_edge resize = XDG_TOPLEVEL_RESIZE_EDGE_NONE;
+			if (xpix < window->width / 3)
+				resize |= XDG_TOPLEVEL_RESIZE_EDGE_LEFT;
+			else if (xpix > 2 * window->width / 3)
+				resize |= XDG_TOPLEVEL_RESIZE_EDGE_RIGHT;
+			if (ypix < window->height / 3)
+				resize |= XDG_TOPLEVEL_RESIZE_EDGE_TOP;
+			else if ((ypix > 2 * window->height / 3))
+				resize |= XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM;
+			xdg_toplevel_resize(window->toplevel, seat, tp->serial, resize);
+			return;
+		}
+	const enum xdg_toplevel_resize_edge resize = resize_edge(window, xpix, ypix);
+	if (resize != XDG_TOPLEVEL_RESIZE_EDGE_NONE) {
+		xdg_toplevel_resize(window->toplevel, seat, tp->serial, resize);
 	} else {
 		bool hc = false;
 		if (window->ctrl && window->ctrl->hover) {
