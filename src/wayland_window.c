@@ -2,7 +2,6 @@
 #define _GNU_SOURCE
 
 #include <assert.h>
-#include <errno.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -691,17 +690,9 @@ void window_create(struct window *window)
 	wl_surface_commit(window->wl_surface);
 }
 
-void window_dispatch(struct window *window)
+bool wayland_dispatch()
 {
-	while (1) {
-		// TODO поскольку вызов блокирующий, до проверки window->close может
-		// не дойти. При этом (пока) draw_frame() продолжает отрисовку,
-		// планируя дальнейшие вызовы независимо от window->close.
-		if (wl_display_dispatch(display) == -1)
-			printf("Errno: %i\n", errno);
-		if (window->close)
-			break;
-	}
+	return wl_display_dispatch(display) >= 0;
 }
 
 void window_destroy(struct window *window)

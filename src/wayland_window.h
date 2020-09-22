@@ -74,6 +74,11 @@ struct controller {
 /** Инициализирует сеанс и интерфейсы для связи с сервером. */
 bool wayland_init(void);
 
+/** Диспетчерезует сообщения сервера.
+ * \return false в случае ошибки, устанавливает errno.
+ */
+bool wayland_dispatch();
+
 /** Завершает соединение с сервером и освобождает связанные ресурсы. */
 void wayland_stop(void);
 
@@ -82,5 +87,3 @@ void window_create(struct window *window);
 
 /** Удаляет окно и связанные объекты */
 void window_destroy(struct window *window);
-
-void window_dispatch(struct window *window);

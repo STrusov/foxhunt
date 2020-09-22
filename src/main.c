@@ -768,7 +768,11 @@ int main(int argc, char *argv[])
 //		.constant_aspect_ratio = true,
 	};
 	window_create(&window);
-	window_dispatch(&window);
+
+	while(!window.close) {
+		if (!wayland_dispatch())
+			break;
+	}
 
 	window_destroy(&window);
 
