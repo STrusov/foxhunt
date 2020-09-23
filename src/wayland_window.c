@@ -184,6 +184,7 @@ static void load_cursors()
 ///      либо NULL — для скрытия курсора.
 static bool set_cursor(struct seat_ctx *sx, const char *name)
 {
+	assert(cursor_theme);
 	// window->cursor_name используется для кеширования и значение NULL
 	// сигнализирует, что курсор для окна не определён (например, потеря фокуса).
 	// Равный NULL параметр name указывает, что курсор должен быть установлен
@@ -364,6 +365,10 @@ static enum xdg_toplevel_resize_edge resize_edge(struct window *window, int x, i
 static void on_pointer_frame(void *p, struct wl_pointer *pointer)
 {
 	struct seat_ctx *inp = p;
+	if (pointer_enter & inp->pointer_event) {
+		load_cursors();
+	}
+
 	struct window *window = inp->pointer_focus;
 	if (!window) {
 		assert(pointer_leave & inp->pointer_event);
@@ -372,17 +377,6 @@ static void on_pointer_frame(void *p, struct wl_pointer *pointer)
 
 	const int x = wl_fixed_to_int(inp->pointer_x);
 	const int y = wl_fixed_to_int(inp->pointer_y);
-	// TODO несмотря на определение координат как surface-local, на деле
-	// при зажатой кнопке (в mutter 3.36) приходят выходящие за пределы значения.
-	if (x < 0 || y < 0 || x > window->width || y > window->height) {
-		set_cursor(inp, "left_ptr");
-		goto leave;
-	}
-
-	if (pointer_enter & inp->pointer_event) {
-		load_cursors();
-	}
-
 	enum xdg_toplevel_resize_edge resize = XDG_TOPLEVEL_RESIZE_EDGE_NONE;
 	if ((pointer_motion | pointer_button) & inp->pointer_event) {
 		if (window->render->resize)
@@ -390,44 +384,55 @@ static void on_pointer_frame(void *p, struct wl_pointer *pointer)
 	}
 
 	if ((pointer_enter | pointer_motion) & inp->pointer_event) {
-		const char *cursor_name = "hand1";
-		switch (resize) {
-		case XDG_TOPLEVEL_RESIZE_EDGE_NONE:
-			if (window->ctrl && window->ctrl->hover)
-				window->ctrl->hover(window, wl_fixed_to_double(inp->pointer_x),
-				                    wl_fixed_to_double(inp->pointer_y), &cursor_name);
-			break;
-		case XDG_TOPLEVEL_RESIZE_EDGE_TOP:
-			cursor_name = "top_side";
-			break;
-		case XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM:
-			cursor_name = "bottom_side";
-			break;
-		case XDG_TOPLEVEL_RESIZE_EDGE_LEFT:
-			cursor_name = "left_side";
-			break;
-		case XDG_TOPLEVEL_RESIZE_EDGE_TOP_LEFT:
-			cursor_name = "top_left_corner";
-			break;
-		case XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_LEFT:
-			cursor_name = "bottom_left_corner";
-			break;
-		case XDG_TOPLEVEL_RESIZE_EDGE_RIGHT:
-			cursor_name = "right_side";
-			break;
-		case XDG_TOPLEVEL_RESIZE_EDGE_TOP_RIGHT:
-			cursor_name = "top_right_corner";
-			break;
-		case XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_RIGHT:
-			cursor_name = "bottom_right_corner";
-			break;
-		}
+		// Несмотря на определение координат как surface-local, на деле
+		// при зажатой кнопке (в mutter 3.36) приходят выходящие за пределы значения.
+		if (x >= 0 && y >= 0 && x < window->width && y < window->height) {
+			// По умолчанию, если под курсором нет активного элемента управления,
+			// осуществляется перемещение окна.
+			const char *cursor_name = "hand1";
+			switch (resize) {
+			case XDG_TOPLEVEL_RESIZE_EDGE_NONE:
+				if (window->ctrl && window->ctrl->hover)
+					window->ctrl->hover(window, wl_fixed_to_double(inp->pointer_x),
+					                    wl_fixed_to_double(inp->pointer_y), &cursor_name);
+				break;
+			case XDG_TOPLEVEL_RESIZE_EDGE_TOP:
+				cursor_name = "top_side";
+				break;
+			case XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM:
+				cursor_name = "bottom_side";
+				break;
+			case XDG_TOPLEVEL_RESIZE_EDGE_LEFT:
+				cursor_name = "left_side";
+				break;
+			case XDG_TOPLEVEL_RESIZE_EDGE_TOP_LEFT:
+				cursor_name = "top_left_corner";
+				break;
+			case XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_LEFT:
+				cursor_name = "bottom_left_corner";
+				break;
+			case XDG_TOPLEVEL_RESIZE_EDGE_RIGHT:
+				cursor_name = "right_side";
+				break;
+			case XDG_TOPLEVEL_RESIZE_EDGE_TOP_RIGHT:
+				cursor_name = "top_right_corner";
+				break;
+			case XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_RIGHT:
+				cursor_name = "bottom_right_corner";
+				break;
+			}
 #ifdef NDEBUG
 		set_cursor(inp, cursor_name);
 #else
 		const bool cursor_selected = set_cursor(inp, cursor_name);
 #endif
 		assert(cursor_selected);
+		} else {
+			// Если курсор за окном и ранее был установлен, его изображение не
+			// актуально, ставим стандартный.
+			if (window->cursor_name)
+				set_cursor(inp, "left_ptr");
+		}
 	}
 
 	// По щелчку у кромки изменяем размер окна, если позволено.
@@ -456,7 +461,6 @@ static void on_pointer_frame(void *p, struct wl_pointer *pointer)
 				xdg_toplevel_move(window->toplevel, seat, inp->pointer_button_serial);
 		}
 	}
-
 leave:
 	inp->pointer_event = 0;
 }
