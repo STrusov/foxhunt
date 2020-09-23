@@ -785,6 +785,30 @@ static void on_toplevel_configure(void *p, struct xdg_toplevel *toplevel,
                                   int32_t width, int32_t height, struct wl_array *states)
 {
 	struct window *window = p;
+
+	// Размер окна может быть изменён как пользователем, так и композитором
+	// (перемещение окна к краю экрана в Gnome). В первом случае установлен флаг
+	// XDG_TOPLEVEL_STATE_RESIZING. Для окон с константным соотношением сторон
+	// последний случай обрабатываем отдельно.
+	bool resizing = false;
+	enum xdg_toplevel_state *state;
+	wl_array_for_each(state, states) {
+		switch(*state) {
+		case XDG_TOPLEVEL_STATE_MAXIMIZED:
+		case XDG_TOPLEVEL_STATE_FULLSCREEN:
+			break;
+		case XDG_TOPLEVEL_STATE_RESIZING:
+			resizing = true;
+			break;
+		case XDG_TOPLEVEL_STATE_ACTIVATED:
+		case XDG_TOPLEVEL_STATE_TILED_LEFT:
+		case XDG_TOPLEVEL_STATE_TILED_RIGHT:
+		case XDG_TOPLEVEL_STATE_TILED_TOP:
+		case XDG_TOPLEVEL_STATE_TILED_BOTTOM:
+			break;
+		}
+	}
+
 	// Нулевым параметром композитор указывает, что следует установить требуемый
 	// клиенту размер окна. Сигнализируем флажком для on_xdg_surface_configure().
 	// Иначе изменяем размер окна, если требуется.
@@ -792,19 +816,29 @@ static void on_toplevel_configure(void *p, struct xdg_toplevel *toplevel,
 		window->pending_configure = true;
 	} else {
 		// Если требуется сохранить соотношение сторон:
-		// вычисляем размер неподвижной стороны из изменяющейся;
+		// если размер меняет композитор, вычисляем большую сторону из меньшей,
+		// предлагаемого композитором размера;
+		// иначе вычисляем размер неподвижной стороны из изменяющейся;
 		// при изменении сразу 2-х сторон вычисляем некое среднее,
 		// поскольку в данном случае пользователь может один размер
 		// уменьшать, а второй увеличивать — и не ясно, что он хочет.
 		if (window->aspect_ratio) {
-			if (window->width != width && window->height != height) {
-				int w1 = height * window->aspect_ratio;
-				height = (height + width / window->aspect_ratio) / 2;
-				width  = (width + w1) / 2;
-			} else if (window->width  != width) {
-				height = width / window->aspect_ratio;
-			} else if (window->height != height) {
-				width = height * window->aspect_ratio;
+			if (resizing) {
+				if (window->width != width && window->height != height) {
+					int w1 = height * window->aspect_ratio;
+					height = (height + width / window->aspect_ratio) / 2;
+					width  = (width + w1) / 2;
+				} else if (window->width  != width) {
+					height = width / window->aspect_ratio;
+				} else if (window->height != height) {
+					width = height * window->aspect_ratio;
+				}
+			} else if (window->width != width || window->height != height) {
+				// к стороне экрана в Gnome — высота больше ширины.
+				if (width < height * window->aspect_ratio + 0.5)
+					height = width / window->aspect_ratio + 0.5;
+				else
+					width = height * window->aspect_ratio + 0.5;
 			}
 			if ((window->height != height || window->width != width)
 			  && height >= 2 * window->border && width >= 2 * window->border) {
