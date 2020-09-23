@@ -61,6 +61,7 @@ struct render {
 /** Интерфейс взаимодействия с устройствами ввода */
 struct controller {
 	/** Указатель над окном. Выход за пределы сигнализируется отрицательной координатой.
+	 * \param cursor_name равен NULL при потере фокуса.
 	 * \return true если указатель над элементом управления.
 	 */
 	bool (*hover)(struct window *window, double x, double y, const char **cursor_name);

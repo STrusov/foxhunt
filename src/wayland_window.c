@@ -234,15 +234,25 @@ static void on_pointer_enter(void *p, struct wl_pointer *pointer, uint32_t seria
 	inp->pointer_event |= pointer_enter;
 }
 
+/* TODO По спецификации протокола, когда указатель перемещается
+ * с одной поверхности на другую, композитору предписано группировать*) события
+ * wl_pointer.enter и wl_pointer.leave в одном кадре (wl_pointer.frame).
+ * В таком случае в обработчике frame указатель pointer_focus потеряет актуальность,
+ * Соответственно, уведомляем окно о потере фокуса безотлагательно.
+ * Возможно, пригодится поле pointer_old_focus?
+ *
+ * *) Группировка не является обязательной и клиент не должен на неё рассчитывать.
+ */
 static void on_pointer_leave(void *p, struct wl_pointer *pointer, uint32_t serial,
                              struct wl_surface *surface)
 {
 	struct seat_ctx *inp = p;
-#ifndef NDEBUG
-	struct window *window = wl_surface_get_user_data(surface);
-#endif
-	assert(window == inp->pointer_focus);
-	inp->pointer_focus_serial = serial;
+	struct window *window = inp->pointer_focus;
+	inp->pointer_focus = NULL;
+	assert(window == wl_surface_get_user_data(surface));
+	if (window->ctrl && window->ctrl->hover)
+		window->ctrl->hover(window, -1.0, -1.0, NULL);
+	window->cursor_name = NULL;
 	inp->pointer_event |= pointer_leave;
 }
 
@@ -355,24 +365,25 @@ static void on_pointer_frame(void *p, struct wl_pointer *pointer)
 {
 	struct seat_ctx *inp = p;
 	struct window *window = inp->pointer_focus;
+	if (!window) {
+		assert(pointer_leave & inp->pointer_event);
+		goto leave;
+	}
+
 	const int x = wl_fixed_to_int(inp->pointer_x);
 	const int y = wl_fixed_to_int(inp->pointer_y);
-
-#if 1
 	// TODO несмотря на определение координат как surface-local, на деле
 	// при зажатой кнопке (в mutter 3.36) приходят выходящие за пределы значения.
 	if (x < 0 || y < 0 || x > window->width || y > window->height) {
 		set_cursor(inp, "left_ptr");
 		goto leave;
 	}
-#endif
 
 	if (pointer_enter & inp->pointer_event) {
 		load_cursors();
 	}
 
 	enum xdg_toplevel_resize_edge resize = XDG_TOPLEVEL_RESIZE_EDGE_NONE;
-	// При pointer_leave window == NULL
 	if ((pointer_motion | pointer_button) & inp->pointer_event) {
 		if (window->render->resize)
 			resize = resize_edge(window, x, y);
@@ -447,13 +458,6 @@ static void on_pointer_frame(void *p, struct wl_pointer *pointer)
 	}
 
 leave:
-	if (pointer_leave & inp->pointer_event) {
-		if (window->ctrl && window->ctrl->hover)
-			window->ctrl->hover(window, -1.0, -1.0, NULL);
-		inp->pointer_focus->cursor_name = NULL;
-		inp->pointer_focus = NULL;
-	}
-
 	inp->pointer_event = 0;
 }
 
