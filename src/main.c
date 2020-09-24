@@ -34,6 +34,7 @@
 #include <stdlib.h>
 #include <limits.h>
 #include <time.h>
+#include <linux/input-event-codes.h>
 
 #include "ay_music.h"
 #include "vulkan.h"
@@ -294,8 +295,6 @@ static void board_draw(struct draw_ctx *restrict ctx)
 			}
 		}
 	}
-	board_cell_x = -1;
-	board_cell_y = -1;
 }
 
 static void rectangle(struct draw_ctx *restrict ctx,
@@ -748,6 +747,14 @@ bool pointer_over(struct window *window, double x, double y, const char **cursor
 	return pointer_click(window, x, y, cursor_name, 0, 0);
 }
 
+void touch(struct window *window, double x, double y)
+{
+	const char *dummy_cursor;
+	window->ctrl->click(window, x, y, &dummy_cursor, BTN_LEFT, 1);
+	window->ctrl->click(window, x, y, &dummy_cursor, BTN_LEFT, 0);
+	board_cell_x = -1;
+	board_cell_y = -1;
+}
 
 static const struct render vulkan = {
 	.create    	= vk_window_create,
@@ -759,6 +766,7 @@ static const struct render vulkan = {
 static const struct controller controller = {
 	.hover  	= pointer_over,
 	.click  	= pointer_click,
+	.touch  	= touch,
 };
 
 int main(int argc, char *argv[])
