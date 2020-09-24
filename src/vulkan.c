@@ -374,8 +374,10 @@ static VkResult create_swapchain(struct vk_context *vk, uint32_t width, uint32_t
 		// UNASSIGNED-CoreValidation-SwapchainInvalidCount(ERROR / SPEC): msgNum: 442632974 - Validation Error: [ UNASSIGNED-CoreValidation-SwapchainInvalidCount ] Object 0: handle = 0x56272ef7a440, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x1a620b0e | vkGetSwapchainImagesKHR() called with non-NULL pSwapchainImages, and with pSwapchainImageCount set to a value (4) that is greater than the value (0) that was returned when pSwapchainImages was NULL.
 		vkGetSwapchainImagesKHR(vk->device, vk->swapchain, &vk->count, NULL);
 		assert(old_count == vk->count || !vk->old_swapchain);
+#ifdef VK_DETAILED_LOG
 		printf(" Подготавливается формирователь видеоряда %ux%ux%u:\n",
 		        swch.imageExtent.width, swch.imageExtent.height, vk->count);
+#endif
 		VkImage *images = calloc(vk->count, sizeof(*images));
 		vkGetSwapchainImagesKHR(vk->device, vk->swapchain, &vk->count, images);
 		if (!vk->old_swapchain) {
@@ -662,8 +664,10 @@ static VkResult create_pipeline(struct vk_context *vk)
 	VkResult r = VK_SUCCESS;
 	if (!vk->pipeline_layout) {
 		r = vkCreatePipelineLayout(vk->device, &pipelinelayoutinfo, allocator, &vk->pipeline_layout);
+#ifdef VK_DETAILED_LOG
 		if (r == VK_SUCCESS)
 			printf("  Создана топология конвейера.\n");
+#endif
 	}
 	if (r == VK_SUCCESS) {
 		// При новом вызове используем предыдущий конвейер в качестве базового.
@@ -694,8 +698,10 @@ static VkResult create_pipeline(struct vk_context *vk)
 		};
 		r = vkCreateGraphicsPipelines(vk->device, VK_NULL_HANDLE, 1, &pipelineinfo,
 		                              allocator, &vk->graphics_pipeline);
+#ifdef VK_DETAILED_LOG
 		if (r == VK_SUCCESS)
 			printf("  Создан %s.\n", first ? "базовый конвейер" : "конвейер растеризации");
+#endif
 	}
 	return r;
 }
@@ -722,7 +728,9 @@ VkResult create_buffer(struct vk_context *vk, VkDeviceSize size,
 	};
 	VkResult r = vkCreateBuffer(vk->device, &buf_info, allocator, buffer);
 	if (r == VK_SUCCESS) {
+#ifdef VK_DETAILED_LOG
 		printf("  Создаётся буфер (%#x) %lu байт:", usage, size);
+#endif
 		struct VkMemoryRequirements req;
 		vkGetBufferMemoryRequirements(vk->device, *buffer, &req);
 		struct VkPhysicalDeviceMemoryProperties props;
@@ -737,13 +745,19 @@ VkResult create_buffer(struct vk_context *vk, VkDeviceSize size,
 				};
 				r = vkAllocateMemory(vk->device, &alloc_info, allocator, mem);
 				if (r == VK_SUCCESS) {
+#ifdef VK_DETAILED_LOG
 					printf(" память распределена");
+#endif
 					r = vkBindBufferMemory(vk->device, *buffer, *mem, 0);
+#ifdef VK_DETAILED_LOG
 					if (r == VK_SUCCESS)
 						printf(" и привязана.");
+#endif
 				}
 			}
+#ifdef VK_DETAILED_LOG
 		printf("\n");
+#endif
 	}
 	return r;
 }
@@ -815,7 +829,9 @@ VkResult vk_acquire_frame(struct vk_context *vk)
 			r = vkCreateSemaphore(vk->device, &ssci, allocator, &vk->frame[vk->active].rendered);
 			if (r != VK_SUCCESS)
 				break;
+#ifdef VK_DETAILED_LOG
 			printf("   Создан семафор готовности изображения №%u.\n", vk->active);
+#endif
 		}
 		if (vk->frame[vk->active].view == VK_NULL_HANDLE) {
 			const struct VkImageViewCreateInfo viewinfo = {
@@ -840,7 +856,9 @@ VkResult vk_acquire_frame(struct vk_context *vk)
 			r = vkCreateImageView(vk->device, &viewinfo, allocator, &vk->frame[vk->active].view);
 			if (r != VK_SUCCESS)
 				break;
+#ifdef VK_DETAILED_LOG
 			printf("   Создана проекция кадра №%u.\n", vk->active);
+#endif
 		}
 		if (vk->frame[vk->active].fb == VK_NULL_HANDLE) {
 			const struct VkFramebufferCreateInfo fbinfo = {
@@ -855,7 +873,9 @@ VkResult vk_acquire_frame(struct vk_context *vk)
 			r = vkCreateFramebuffer(vk->device, &fbinfo, allocator, &vk->frame[vk->active].fb);
 			if (r != VK_SUCCESS)
 				break;
+#ifdef VK_DETAILED_LOG
 			printf("   Создан буфер кадра №%u.\n", vk->active);
+#endif
 		}
 		if (vk->frame[vk->active].cmd == VK_NULL_HANDLE) {
 			const struct VkCommandBufferAllocateInfo allocinfo = {
@@ -867,7 +887,9 @@ VkResult vk_acquire_frame(struct vk_context *vk)
 			r = vkAllocateCommandBuffers(vk->device, &allocinfo, &vk->frame[vk->active].cmd);
 			if (r != VK_SUCCESS)
 				break;
+#ifdef VK_DETAILED_LOG
 			printf("   Создан буфер команд №%u.\n", vk->active);
+#endif
 		}
 		if (vk->frame[vk->active].pending == VK_NULL_HANDLE) {
 			static const struct VkFenceCreateInfo signaled_fence = {
@@ -877,7 +899,9 @@ VkResult vk_acquire_frame(struct vk_context *vk)
 			r = vkCreateFence(vk->device, &signaled_fence, allocator, &vk->frame[vk->active].pending);
 			if (r != VK_SUCCESS)
 				break;
+#ifdef VK_DETAILED_LOG
 			printf("   Создан барьер буфера команд №%u.\n", vk->active);
+#endif
 		}
 		break;
 	}
