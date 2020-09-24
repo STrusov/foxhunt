@@ -825,13 +825,12 @@ static void on_toplevel_configure(void *p, struct xdg_toplevel *toplevel,
 		if (window->aspect_ratio) {
 			if (resizing) {
 				if (window->width != width && window->height != height) {
-					int w1 = height * window->aspect_ratio;
-					height = (height + width / window->aspect_ratio) / 2;
-					width  = (width + w1) / 2;
+					width  = (width + height * window->aspect_ratio + 1) * 0.5;
+					height = width / window->aspect_ratio + 0.5;
 				} else if (window->width  != width) {
-					height = width / window->aspect_ratio;
+					height = width / window->aspect_ratio + 0.5;
 				} else if (window->height != height) {
-					width = height * window->aspect_ratio;
+					width = height * window->aspect_ratio + 0.5;
 				}
 			} else if (window->width != width || window->height != height) {
 				// к стороне экрана в Gnome — высота больше ширины.
