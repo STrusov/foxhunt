@@ -220,8 +220,10 @@ static bool board_over(float x, float y, uint32_t button, uint32_t state)
 	if (x >= 2.0f / aspect_ratio - 1.0f)
 		return false;
 
-	int x100 = 100 * (x + 1.0f) / aspect_ratio * (board_size - 1);
-	int y100 = 100 * (y + 1.0f/aspect_ratio ) / aspect_ratio * (board_size - 1);
+	// x + 1.0f == 0                   => 0
+	// x + 1.0f == 2.0f / aspect_ratio => board_size
+	int x100 = (100 / 2) * aspect_ratio * board_size * (x + 1.0f);
+	int y100 = (100 / 2) * aspect_ratio * board_size * (y + 1.0f/aspect_ratio);
 	if (x100 % 100 > 4 && x100 % 100 < 97)
 		board_cell_x = x100 / 100;
 	if (y100 % 100 > 4 && y100 % 100 < 97)
@@ -267,19 +269,17 @@ static inline void colorer_cf(struct vertex *restrict vert, struct color src, un
 	}
 }
 
-static void board_draw(struct draw_ctx *restrict ctx)
+static void board_draw(struct draw_ctx *restrict ctx, struct pos2d pos)
 {
 	const float step = 2.0f;
-	float y = 1.0f - board_size;
-	for (int yc = 0; yc < board_size; ++yc, y += step) {
-		float x = 1.0f - board_size * aspect_ratio;
-		for (int xc = 0; xc < board_size; ++xc, x += step) {
-			struct vec4 at = {
-				.x = x,
-				.y = y,
-				.z = 0,
-				.w = board_size * aspect_ratio,
-			};
+	const float w = board_size * aspect_ratio;
+	struct vec4 at = {
+		.y = w * pos.y - board_size + 1.0f,
+		.w = w,
+	};
+	for (int yc = 0; yc < board_size; ++yc, at.y += step) {
+		at.x = w * pos.x - board_size + 1.0f;
+		for (int xc = 0; xc < board_size; ++xc, at.x += step) {
 			struct board_cell *cell = board_at(xc, yc);
 			if (cell->animation > 0)
 				--cell->animation;
@@ -552,9 +552,9 @@ static void intro(struct draw_ctx *restrict ctx, struct pos2d at)
 			"Найденная \"лиса\"",
 			"снимается с поля.",
 		};
-		const float iw = 26.0f;
+		const float iw = 20.0f * aspect_ratio;
 		const struct vec4 at4 = { at.x * iw, at.y * iw, 0.0f, iw };
-		rectangle(ctx, at4, 19.0f, 19.0f, COLOR_BOX);
+		rectangle(ctx, at4, 19.5f, 19.5f, COLOR_BOX);
 		struct color ca = COLOR_INTRO;
 		if (seconds < phase_per_sec * 6)
 			ca.a = ca.a * (seconds - phase_per_sec * 5) / (float)phase_per_sec;
@@ -582,7 +582,7 @@ static void intro(struct draw_ctx *restrict ctx, struct pos2d at)
 			"Музыка\x1e\x16",
 			"\x12Е. Столяренко",
 		};
-		const float iw = 18.0f;
+		const float iw = 13.5f * aspect_ratio;
 		const struct vec4 at4 = { at.x * iw, at.y * iw, 0.0f, iw };
 		rectangle(ctx, at4, 13.0f, 13.0f, COLOR_BOX_A);
 		struct color ca = COLOR_AUTHORS;
@@ -657,6 +657,7 @@ static bool draw_frame(void *p)
 
 		background(&dc);
 
+		// TODO при обработке ввода координата пока не учитывается.
 		const struct pos2d board_center = {
 			.x = 1.0f / aspect_ratio - 1.0f,
 			.y = 0.0f,
@@ -664,7 +665,7 @@ static bool draw_frame(void *p)
 		switch (game_state) {
 		case gs_play:
 		case gs_finish:
-			board_draw(&dc);
+			board_draw(&dc, board_center);
 			break;
 		case gs_intro:
 			intro(&dc, board_center);
