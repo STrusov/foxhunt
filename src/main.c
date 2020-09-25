@@ -782,15 +782,19 @@ int main(int argc, char *argv[])
 	if (music)
 		ay_music_play();
 
-	if (!wayland_init())
+	if (!wayland_init()) {
+		fprintf(stderr, "Не установлена связь с Wayland.\n");
 		return 1;
+	}
 
 	poly_init(&square094, 0.94f * 1.414213562f); // √2
 	poly_init(&square108, 1.08f * 1.414213562f); // √2
 	poly_init(&octagon150, 1.5);
 
-	if (vk_init() != VK_SUCCESS)
+	if (vk_init() != VK_SUCCESS) {
+		fprintf(stderr, "Не инициализирован Vulkan.\n");
 		return 2;
+	}
 
 	time_init();
 
