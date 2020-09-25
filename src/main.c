@@ -649,8 +649,11 @@ static bool draw_frame(void *p)
 		struct vertex	*vert_buf = NULL;
 		vert_index   	*indx_buf = NULL;
 		if (dc.stage) {
-			r = vk_begin_vertex_buffer(vk, total_vertices * sizeof(struct vertex), &vert_buf);
-			r = vk_begin_index_buffer(vk, total_indices * sizeof(vert_index), &indx_buf);
+			// Округляем немного вверх, что бы избежать новых распределений памяти.
+			unsigned vtcs = (total_vertices | ((1 << 5) - 1)) - 1;
+			unsigned idcs = (total_indices  | ((1 << 6) - 1)) - 1;
+			r = vk_begin_vertex_buffer(vk, vtcs * sizeof(struct vertex), &vert_buf);
+			r = vk_begin_index_buffer(vk, idcs * sizeof(vert_index), &indx_buf);
 		}
 		dc.vert_buf = vert_buf;
 		dc.indx_buf = indx_buf;
