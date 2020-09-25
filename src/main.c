@@ -43,6 +43,8 @@
 #include "polygon.h"
 #include "text.h"
 
+#define APP_VERSION "0.12-альфа"
+
 #ifndef BOARD_MAX_SIZE
 #define BOARD_MAX_SIZE 9
 #endif
@@ -69,7 +71,6 @@
 #define COLOR_BACKGROUND	((struct color){ 0.10f, 0.10f, 0.10f, 0.25f })
 
 const char game_name[] = "Охота на лис";
-const char game_version[] = "0.10-альфа";
 
 const float aspect_ratio = 4.0/3.0;
 //const float aspect_ratio = 16.0/9.0;
@@ -775,7 +776,7 @@ static const struct controller controller = {
 
 int main(int argc, char *argv[])
 {
-	printf("«%s» версия %s.\n", game_name, game_version);
+	printf("«%s» версия " APP_VERSION ".\n", game_name);
 
 	bool music = ay_music_init() >= 0;
 	if (music)
