@@ -574,7 +574,7 @@ static void intro(struct draw_ctx *restrict ctx, struct pos2d at)
 		const static char *const authors[] = {
 			"Авторы",
 			"",
-			"ИДЕЯ/МК-61\x17",
+			"ИДЕЯ/Б3-34\x17",
 			"\x17А. Несчетный",
 			"",
 			"Реализация\x12\xd",
