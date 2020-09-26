@@ -4,12 +4,13 @@
 #define VK_USE_PLATFORM_WAYLAND_KHR
 #include <vulkan/vulkan.h>
 
-#ifndef ENABLE_VK_VALIDATION
+/** Активирует проверки параметров Вулкан. */
+#ifndef FH_VK_ENABLE_VALIDATION
   #ifndef NDEBUG
-    #define ENABLE_VK_VALIDATION 1
+    #define FH_VK_ENABLE_VALIDATION 1
   #endif
-#elif !ENABLE_VK_VALIDATION
-  #undef ENABLE_VK_VALIDATION
+#elif !FH_VK_ENABLE_VALIDATION
+  #undef FH_VK_ENABLE_VALIDATION
 #endif
 
 #include "draw.h"
