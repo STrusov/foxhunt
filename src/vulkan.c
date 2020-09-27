@@ -55,7 +55,9 @@ VkResult vk_init(void)
 #ifdef FH_VK_ENABLE_VALIDATION
 	struct VkInstanceCreateInfo ii = instinfo;
 	VkResult r = vkCreateInstance(&ii, allocator, &instance);
-	if (r == VK_ERROR_LAYER_NOT_PRESENT) {
+	if (r == VK_SUCCESS) {
+		printf("Активна прослойка %s.\n", validation_layers[0]);
+	} else if (r == VK_ERROR_LAYER_NOT_PRESENT) {
 		printf("Отсутствует валидатор Vulkan %s.\n", validation_layers[0]);
 		ii.enabledLayerCount = 0;
 		r = vkCreateInstance(&ii, allocator, &instance);
