@@ -239,6 +239,11 @@ static VkResult select_gpu(struct vk_context *vk)
 				if (gfx_q != inv && presentation != inv) {
 					vk->gpu = devs[d];
 					print_gpu_properties(vk->gpu);
+					// TODO в случае Intel+Nvidia проверка 2-го устройства
+					// приводит к краху vkGetPhysicalDeviceSurfaceSupportKHR
+					// в /lib64/libnvidia-glcore.so.450.66.
+					// Используем первый подходящий.
+					d = num_dev;
 					break;
 				}
 			}
