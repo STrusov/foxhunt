@@ -192,7 +192,7 @@ static void print_gpu_properties(VkPhysicalDevice gpu)
 {
 	struct VkPhysicalDeviceProperties gp;
 	vkGetPhysicalDeviceProperties(gpu, &gp);
-	printf("%s процессор Vulkan %u.%u.%u %s [%x:%x] v%x.\n",
+	printf(" %s процессор Vulkan %u.%u.%u %s [%x:%x] v%x.\n",
 	       gpu_type[gp.deviceType], VK_VERSION_MAJOR(gp.apiVersion),
 	       VK_VERSION_MINOR(gp.apiVersion), VK_VERSION_PATCH(gp.apiVersion),
 	       gp.deviceName, gp.vendorID, gp.deviceID, gp.driverVersion);
@@ -215,8 +215,9 @@ static VkResult select_gpu(struct vk_context *vk)
 		vkEnumeratePhysicalDevices(instance, &num_dev, devs);
 		for (uint32_t d = 0; d < num_dev; ++d) {
 			uint32_t num_qf = 0;
+			print_gpu_properties(devs[d]);
 			vkGetPhysicalDeviceQueueFamilyProperties(devs[d], &num_qf, NULL);
-			printf("  Сопроцессор №%u поддерживает семейств очередей: %u.\n", d+1, num_qf);
+			printf("  Поддерживает семейств очередей: %u.\n", num_qf);
 			if (!num_qf)
 				continue;
 
@@ -238,7 +239,6 @@ static VkResult select_gpu(struct vk_context *vk)
 
 				if (gfx_q != inv && presentation != inv) {
 					vk->gpu = devs[d];
-					print_gpu_properties(vk->gpu);
 					// TODO в случае Intel+Nvidia проверка 2-го устройства
 					// приводит к краху vkGetPhysicalDeviceSurfaceSupportKHR
 					// в /lib64/libnvidia-glcore.so.450.66.
