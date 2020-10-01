@@ -15,7 +15,12 @@ static const char *validation_layers[] = {
 
 static const char *instance_extensions[] = {
 	VK_KHR_SURFACE_EXTENSION_NAME,
+#ifdef VK_USE_PLATFORM_WAYLAND_KHR
 	VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME,
+#endif
+#ifdef VK_USE_PLATFORM_XCB_KHR
+	VK_KHR_XCB_SURFACE_EXTENSION_NAME,
+#endif
 };
 
 static const char *device_extensions[] = {
@@ -167,18 +172,35 @@ struct vk_frame {
 	struct vk_buffer	indx;
 };
 
+#ifdef VK_USE_PLATFORM_WAYLAND_KHR
 /** Создаёт связанную с Воландом поверхность Вулкан. */
-static VkResult create_surface(struct vk_context *vk, struct wl_display *display, struct wl_surface *surface)
+static VkResult surface_create(VkSurfaceKHR *surface, struct wl_display *display, struct wl_surface *window)
 {
 	const struct VkWaylandSurfaceCreateInfoKHR surfinfo = {
 		.sType  	= VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR,
 		.pNext  	= NULL,
 		.flags  	= 0,
 		.display	= display,
-		.surface	= surface,
+		.surface	= window,
 	};
-	return vkCreateWaylandSurfaceKHR(instance, &surfinfo, allocator, &vk->surface);
+	return vkCreateWaylandSurfaceKHR(instance, &surfinfo, allocator, surface);
 }
+#endif
+
+#ifdef VK_USE_PLATFORM_XCB_KHR
+/** Создаёт связанную с X11 (XCB) поверхность Вулкан. */
+static VkResult surface_create(VkSurfaceKHR *surface, xcb_connection_t* connection, xcb_window_t window)
+{
+	const struct VkXcbSurfaceCreateInfoKHR surfinfo = {
+		.sType     	= VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR,
+		.pNext     	= NULL,
+		.flags     	= 0,
+		.connection	= connection,
+		.window    	= window,
+	};
+	return vkCreateXcbSurfaceKHR(instance, &surfinfo, allocator, surface);
+}
+#endif
 
 static const char *gpu_type[] = {
 	[VK_PHYSICAL_DEVICE_TYPE_OTHER]          = "",
@@ -1096,25 +1118,33 @@ void vk_window_resize(void *p, uint32_t width, uint32_t height)
 	}
 }
 
-void vk_window_create(struct wl_display *display, struct wl_surface *surface,
+static VkResult context_init(struct vk_context *vk, uint32_t width, uint32_t height)
+{
+	VkResult r;
+	if ((r = select_gpu(vk)) != VK_SUCCESS)
+		return r;
+	if ((r = create_device(vk)) != VK_SUCCESS)
+		return r;
+
+	if ((r = create_swapchain(vk, width, height)) != VK_SUCCESS)
+		return r;
+	if ((r = create_render(vk)) != VK_SUCCESS)
+		return r;
+	if ((r = create_shaders(vk)) != VK_SUCCESS)
+		return r;
+	if ((r = create_pipeline(vk)) != VK_SUCCESS)
+		return r;
+	return create_command_pool(vk);
+}
+
+void vk_window_create(window_server *display, window_surface window,
                       uint32_t width, uint32_t height, void **vk_context)
 {
 	struct vk_context *vk = calloc(1, sizeof(*vk));
 	*vk_context = vk;
 	if (!vk)
 		return;
-	while (create_surface(vk, display, surface) == VK_SUCCESS) {
-		select_gpu(vk);
-		create_device(vk);
-
-		create_swapchain(vk, width, height);
-		create_render(vk);
-		create_shaders(vk);
-		create_pipeline(vk);
-		create_command_pool(vk);
-
-		return;
-	}
-	vk_window_destroy(vk);
+	if (surface_create(&vk->surface, display, window) != VK_SUCCESS
+	 || context_init(vk, width, height) != VK_SUCCESS)
+		vk_window_destroy(vk);
 }
-

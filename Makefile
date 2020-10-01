@@ -1,3 +1,6 @@
+# По умолчанию собирается версия для Wayland.
+# Что бы использовать X11 (XCB), запускать так: make X11=1
+
 TARGET  = foxhunt
 PREFIX  ?= /usr/local
 
@@ -5,9 +8,17 @@ HEADERS := $(wildcard src/*.h)
 SOURCES := $(wildcard src/*.c)
 SHADERS := src/shader.frag src/shader.vert
 MUSICS  := $(wildcard music/*.cps)
-LIBS    := alsa vulkan wayland-client wayland-cursor
+LIBS    := alsa vulkan
 CFLAGS  := -std=c18 -Wall
 LDFLAGS := -lm -pthread
+ifdef X11
+    SOURCES := $(subst $(wildcard src/wayland*.c),,$(SOURCES))
+    LIBS += xcb
+    CFLAGS += -DFH_PLATFORM_XCB
+else
+    SOURCES := $(subst $(wildcard src/xcb*.c),,$(SOURCES))
+    LIBS += wayland-client wayland-cursor
+endif
 CC ?= cc
 #GLCFLAGS :=
 GLC ?= glslangValidator -V
@@ -23,16 +34,20 @@ else
 endif
 
 WLPROTODIR := wlproto
+ifndef X11
 WLPROTOS   := xdg-shell
 WLHEADERS  := $(addprefix $(WLPROTODIR)/,$(WLPROTOS:=-client-protocol.h))
 WLSOURCES  := $(addprefix $(WLPROTODIR)/,$(WLPROTOS:=-protocol.c))
 WLPROTOXML != pkg-config wayland-protocols --variable=pkgdatadir
 WLSCANNER  != pkg-config wayland-scanner --variable=wayland_scanner
+endif
 LIBSCFLAGS   != pkg-config $(LIBS) --cflags
 LIBSLDFLAGS  != pkg-config $(LIBS) --libs
 
+ifndef X11
 HEADERS += $(WLHEADERS)
 SOURCES += $(WLSOURCES)
+endif
 CFLAGS  += $(LIBSCFLAGS)
 LDFLAGS += $(LIBSLDFLAGS)
 OBJECTS := $(SOURCES:.c=.o)

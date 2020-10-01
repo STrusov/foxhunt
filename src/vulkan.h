@@ -1,7 +1,11 @@
 
 #pragma once
 
-#define VK_USE_PLATFORM_WAYLAND_KHR
+#ifdef FH_PLATFORM_XCB
+  #define VK_USE_PLATFORM_XCB_KHR
+#else
+  #define VK_USE_PLATFORM_WAYLAND_KHR
+#endif
 #include <vulkan/vulkan.h>
 
 /** Активирует проверки параметров Вулкан. */
@@ -20,8 +24,18 @@ void vk_stop(void);
 
 struct vk_context;
 
+#ifdef VK_USE_PLATFORM_WAYLAND_KHR
+typedef struct wl_display	window_server;
+typedef struct wl_surface*	window_surface;
+#endif
+
+#ifdef VK_USE_PLATFORM_XCB_KHR
+typedef xcb_connection_t	window_server;
+typedef xcb_window_t    	window_surface;
+#endif
+
 /** Создаёт оконную поверхность и связанные структуры. */
-void vk_window_create(struct wl_display *, struct wl_surface *,
+void vk_window_create(window_server*, window_surface,
                       uint32_t width, uint32_t height, void **object);
 
 void vk_window_destroy(void *vk_context);

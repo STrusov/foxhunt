@@ -39,10 +39,9 @@
 
 #include "ay_music.h"
 #include "vulkan.h"
-#include "wayland_window.h"
-
 #include "polygon.h"
 #include "text.h"
+#include "window.h"
 
 #define APP_VERSION "0.12-альфа"
 

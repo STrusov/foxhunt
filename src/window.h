@@ -1,11 +1,18 @@
 /**\file
- * \brief	Интерфейс клиента Wayland.
+ * \brief	Интерфейс клиента Wayland/X11.
+ *
+ *  Выбор платформы осуществляется на этапе трансляции.
+ *  Если задан макрос FH_PLATFORM_XCB, используется X11.
  */
 
 #pragma once
 
 #include <stdbool.h>
+
+#ifdef FH_PLATFORM_XCB
+#else
 #include <wayland-client.h>
+#endif
 
 /** Описывает окно. */
 struct window {

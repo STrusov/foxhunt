@@ -16,7 +16,7 @@
 #include <wayland-cursor.h>
 #include "xdg-shell-client-protocol.h"
 
-#include "wayland_window.h"
+#include "window.h"
 
 /** Количество одновременно обрабатываемых касаний. */
 #define TOUCH_POINTS 10
