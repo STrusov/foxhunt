@@ -7,9 +7,11 @@
 
 #pragma once
 
+#include <assert.h>
 #include <stdbool.h>
 
 #ifdef FH_PLATFORM_XCB
+#include <xcb/xcb.h>
 #else
 #include <wayland-client.h>
 #endif
@@ -35,6 +37,11 @@ struct window {
 
 	/** Данные построителя изображений      */
 	void                	*render_ctx;
+
+#ifdef FH_PLATFORM_XCB
+	/** Идентификатор окна                  */
+	xcb_window_t        	window;
+#else
 	/** Поверхность окна                    */
 	struct wl_surface   	*wl_surface;
 	/** Пригодная к отображению поверхность */
@@ -43,6 +50,7 @@ struct window {
 	struct xdg_toplevel 	*toplevel;
 	/** Текущее изображение курсора         */
 	struct wl_surface   	*cursor;
+#endif
 	/** Имя текущего курсора                */
 	const char          	*cursor_name;
 
@@ -55,8 +63,13 @@ struct window {
 /** Интерфейс для отрисовки окна */
 struct render {
 	/** Конструктор              */
+#ifdef FH_PLATFORM_XCB
+	void (*create)(xcb_connection_t *, xcb_window_t, uint32_t width,
+	               uint32_t height, void **render_ctx);
+#else
 	void (*create)(struct wl_display *, struct wl_surface *, uint32_t width,
 	               uint32_t height, void **render_ctx);
+#endif
 	/** Деструктор               */
 	void (*destroy)(void *render_ctx);
 	/** Вызывается, когда композитор готов отобразить новый кадр.*/
@@ -86,18 +99,53 @@ struct controller {
 };
 
 /** Инициализирует сеанс и интерфейсы для связи с сервером. */
-bool wayland_init(void);
+static inline bool wp_init(void);
 
 /** Диспетчерезует сообщения сервера.
  * \return false в случае ошибки, устанавливает errno.
  */
-bool wayland_dispatch();
+static inline bool wp_dispatch(void);
 
 /** Завершает соединение с сервером и освобождает связанные ресурсы. */
-void wayland_stop(void);
+static inline void wp_stop(void);
 
 /** Создаёт окно и связанные объекты */
-void window_create(struct window *window);
+bool window_create(struct window *window);
 
 /** Удаляет окно и связанные объекты */
 void window_destroy(struct window *window);
+
+static inline void window_geometry(struct window *window)
+{
+	assert(!window->height || !window->width || !window->aspect_ratio || window->width == window->aspect_ratio * window->height);
+
+	if (window->constant_aspect_ratio)
+		window->aspect_ratio = window->width / (double)window->height;
+	if (!window->height && window->aspect_ratio)
+		window->height = window->width / window->aspect_ratio + 0.5;
+	if (!window->width && window->aspect_ratio)
+		window->width = window->height * window->aspect_ratio + 0.5;
+
+	assert(2 * window->border <= window->width);
+	assert(2 * window->border <= window->height);
+}
+
+#ifdef FH_PLATFORM_XCB
+
+bool xcb_init(void);
+bool xcb_dispatch(void);
+void xcb_stop(void);
+bool wp_init(void) { return xcb_init(); }
+bool wp_dispatch(void) { return xcb_dispatch(); }
+void wp_stop(void) { xcb_stop(); }
+
+#else
+
+bool wayland_init(void);
+bool wayland_dispatch(void);
+void wayland_stop(void);
+bool wp_init(void) { return wayland_init(); }
+bool wp_dispatch(void) {	return wayland_dispatch(); }
+void wp_stop(void) { wayland_stop(); }
+
+#endif//#ifdef FH_PLATFORM_XCB

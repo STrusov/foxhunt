@@ -1,7 +1,6 @@
 
 #define _GNU_SOURCE
 
-#include <assert.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -870,19 +869,9 @@ const static struct xdg_toplevel_listener toplevel_listener = {
 };
 
 
-void window_create(struct window *window)
+bool window_create(struct window *window)
 {
-	assert(!window->height || !window->width || !window->aspect_ratio || window->width == window->aspect_ratio * window->height);
-
-	if (window->constant_aspect_ratio)
-		window->aspect_ratio = window->width / (double)window->height;
-	if (!window->height && window->aspect_ratio)
-		window->height = window->width / window->aspect_ratio + 0.5;
-	if (!window->width && window->aspect_ratio)
-		window->width = window->height * window->aspect_ratio + 0.5;
-
-	assert(2 * window->border <= window->width);
-	assert(2 * window->border <= window->height);
+	window_geometry(window);
 
 	window->wl_surface = wl_compositor_create_surface(compositor);
 	wl_surface_set_user_data(window->wl_surface, window);
@@ -898,19 +887,19 @@ void window_create(struct window *window)
 	assert(window->render->create);
 	window->render->create(display, window->wl_surface, window->width,
 	                       window->height, &window->render_ctx);
-	assert(window->render_ctx);
-
-	wl_surface_commit(window->wl_surface);
+	if (window->render_ctx)
+		wl_surface_commit(window->wl_surface);
+	return window->render_ctx;
 }
 
-bool wayland_dispatch()
+bool wayland_dispatch(void)
 {
 	return wl_display_dispatch(display) >= 0;
 }
 
 void window_destroy(struct window *window)
 {
-	if (window->render->destroy)
+	if (window->render->destroy && window->render_ctx)
 		window->render->destroy(window->render_ctx);
 
 	if (window->cursor)

@@ -321,13 +321,15 @@ static const struct VkSemaphoreCreateInfo ssci = {
 	.sType	= VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
 };
 
-static VkResult surface_characteristics(struct vk_context *vk)
+static VkResult surface_characteristics(struct vk_context *vk, uint32_t width, uint32_t height)
 {
 	VkSurfaceCapabilitiesKHR	surfcaps;
 	VkResult r = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vk->gpu, vk->surface, &surfcaps);
 	if (r != VK_SUCCESS)
 		return r;
-	assert(surfcaps.currentExtent.width == 0xFFFFFFFF);
+	// В Wayland 0xFFFFFFFF, а в XCB соответствует размерам окна.
+	// Оба варианта подходят для инициализации vk->extent в create_swapchain().
+	assert(surfcaps.currentExtent.width == 0xFFFFFFFF || (surfcaps.currentExtent.width == width && surfcaps.currentExtent.height == height));
 	vk->transform = surfcaps.currentTransform;
 	vk->min_count = surfcaps.minImageCount;  // TODO +1?
 	printf(" Допустимое количество кадров последовательности: %u..%u\n",
@@ -363,7 +365,7 @@ static VkResult create_swapchain(struct vk_context *vk, uint32_t width, uint32_t
 {
 	VkResult r;
 	if (!vk->min_count) {
-		r = surface_characteristics(vk);
+		r = surface_characteristics(vk, width, height);
 		if (r != VK_SUCCESS)
 			return r;
 	}
@@ -1145,6 +1147,8 @@ void vk_window_create(window_server *display, window_surface window,
 	if (!vk)
 		return;
 	if (surface_create(&vk->surface, display, window) != VK_SUCCESS
-	 || context_init(vk, width, height) != VK_SUCCESS)
+	 || context_init(vk, width, height) != VK_SUCCESS) {
 		vk_window_destroy(vk);
+		*vk_context = NULL;
+	}
 }

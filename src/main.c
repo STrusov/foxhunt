@@ -776,15 +776,21 @@ static const struct controller controller = {
 
 int main(int argc, char *argv[])
 {
+	int r = 0;
 	printf("«%s» версия " APP_VERSION ".\n", game_name);
 
 	bool music = ay_music_init() >= 0;
 	if (music)
 		ay_music_play();
 
-	if (!wayland_init()) {
+	if (!wp_init()) {
+#ifdef FH_PLATFORM_XCB
+		fprintf(stderr, "Не установлена связь с X сервером.\n");
+#else
 		fprintf(stderr, "Не установлена связь с Wayland.\n");
-		return 1;
+#endif
+		r = 1;
+		goto exit_music;
 	}
 
 	poly_init(&square094, 0.94f * 1.414213562f); // √2
@@ -793,7 +799,8 @@ int main(int argc, char *argv[])
 
 	if (vk_init() != VK_SUCCESS) {
 		fprintf(stderr, "Не инициализирован Vulkan.\n");
-		return 2;
+		r = 2;
+		goto exit_wp;
 	}
 
 	time_init();
@@ -808,21 +815,26 @@ int main(int argc, char *argv[])
 		.aspect_ratio = aspect_ratio,
 //		.constant_aspect_ratio = true,
 	};
-	window_create(&window);
-
-	while(!window.close) {
-		if (!wayland_dispatch())
-			break;
+	if (!window_create(&window)) {
+		fprintf(stderr, "Не создано основное окно.\n");
+		r = 3;
+		goto exit_vk;
 	}
 
+	while(!window.close) {
+		if (!wp_dispatch())
+			break;
+	}
 	window_destroy(&window);
 
+exit_vk:
 	vk_stop();
-	wayland_stop();
-
+exit_wp:
+	wp_stop();
+exit_music:
 	if (music)
 		ay_music_stop();
 
-	return 0;
+	return r;
 }
 
