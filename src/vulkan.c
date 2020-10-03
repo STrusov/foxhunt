@@ -132,11 +132,8 @@ struct vk_context {
 	uint32_t        	active;
 	/** Последовательность кадров + 1 резерв для old_swapchain.   */
 	struct vk_frame 	*frame;
-
-	/** Набор семафоров для \see vk_acquire_frame().          */
-	VkSemaphore     	*acq_pool;
-	/** Текущий выбранный из набора.                          */
-	uint32_t        	acq_current;
+	/** Текущий выбранный из набора (элемент pool).               */
+	uint32_t        	pool_current;
 
 	/** Представляет коллекцию привязок, шагов и зависимостей между ними. */
 	VkRenderPass    	render_pass;
@@ -163,6 +160,7 @@ struct vk_buffer {
 struct vk_frame {
 	VkImage         	img;
 	VkFramebuffer   	fb;
+	VkSemaphore     	pool;	///< не обязательно относится к данному кадру \see vk_acquire_frame().
 	VkSemaphore     	acquired;
 	VkSemaphore     	rendered;
 	VkImageView     	view;
@@ -413,15 +411,14 @@ static VkResult create_swapchain(struct vk_context *vk, uint32_t width, uint32_t
 		vkGetSwapchainImagesKHR(vk->device, vk->swapchain, &vk->count, images);
 		if (!vk->old_swapchain) {
 			vk->frame = calloc(1 + vk->count, sizeof(*vk->frame));
-			vk->acq_pool = calloc(vk->count, sizeof(*vk->acq_pool));
 		}
-		if (!images || !vk->frame || !vk->acq_pool)
+		if (!images || !vk->frame)
 			r = VK_ERROR_OUT_OF_HOST_MEMORY;
 		else {
 			for (int i = 0; i < vk->count; ++i) {
 				vk->frame[i].img = images[i];
 				if (!vk->old_swapchain) {
-					r = vkCreateSemaphore(vk->device, &ssci, allocator, &vk->acq_pool[i]);
+					r = vkCreateSemaphore(vk->device, &ssci, allocator, &vk->frame[i].pool);
 					if (r != VK_SUCCESS)
 						break;
 				}
@@ -850,12 +847,12 @@ VkResult vk_acquire_frame(struct vk_context *vk, int64_t timeout)
 	// захваченных кадров не превышает разность между размером ряда и
 	// minImageCount, возвращённой vkGetPhysicalDeviceSurfaceCapabilities2KHR().
 	VkResult r = vkAcquireNextImageKHR(vk->device, vk->swapchain, timeout,
-	                                   vk->acq_pool[vk->acq_current],
+	                                   vk->frame[vk->pool_current].pool,
 	                                   VK_NULL_HANDLE, &vk->active);
 	// TODO VK_SUBOPTIMAL_KHR
 	while(r >= VK_SUCCESS) {
-		vk->frame[vk->active].acquired = vk->acq_pool[vk->acq_current];
-		vk->acq_current = (vk->acq_current + 1) % vk->count;
+		vk->frame[vk->active].acquired = vk->frame[vk->pool_current].pool;
+		vk->pool_current = (vk->pool_current + 1) % vk->count;
 		if (vk->frame[vk->active].rendered == VK_NULL_HANDLE) {
 			r = vkCreateSemaphore(vk->device, &ssci, allocator, &vk->frame[vk->active].rendered);
 			if (r != VK_SUCCESS)
@@ -1076,7 +1073,7 @@ void vk_window_destroy(void *vk_context)
 	// Обрабатываем так же и резервный элемент массива,
 	// где могут остаться отложенные для удаления описатели.
 	do {
-		vkDestroySemaphore(vk->device, vk->acq_pool[vk->count], allocator);
+		vkDestroySemaphore(vk->device, vk->frame[vk->count].pool, allocator);
 		// Из-за ленивой инициализации часть может быть пуста.
 		vkDestroySemaphore(vk->device, vk->frame[vk->count].rendered, allocator);
 		vkDestroyFence(vk->device,  vk->frame[vk->count].pending, allocator);
@@ -1088,7 +1085,6 @@ void vk_window_destroy(void *vk_context)
 		vkFreeMemory(vk->device, vk->frame[vk->count].indx.mem, allocator);
 		vkDestroyBuffer(vk->device, vk->frame[vk->count].indx.buf, allocator);
 	} while (vk->count--);
-	free(vk->acq_pool);
 	free(vk->frame);
 
 	destroy_shaders(vk);
