@@ -16,13 +16,6 @@ static struct xcb_connection_t	*connection;
 static struct xcb_screen_t    	*screen;
 
 
-static void draw_frame(struct window *window)
-{
-	assert(window->render->draw_frame);
-	window->render->draw_frame(window->render_ctx);
-}
-
-
 static xcb_atom_t get_atom_by_name(const char *name)
 {
 	xcb_intern_atom_cookie_t c = xcb_intern_atom(connection, 0, strlen(name), name);
@@ -42,6 +35,8 @@ enum atom {
 	net_wm_window_type,
 	net_wm_window_type_normal,
 	utf8_string,
+	wm_delete_window,
+	wm_protocols,
 	atom_max
 };
 
@@ -52,6 +47,8 @@ static struct { const char *const name; xcb_atom_t id; } atom[atom_max] = {
 	[net_wm_window_type]       	= { .name = "_NET_WM_WINDOW_TYPE" },
 	[net_wm_window_type_normal]	= { .name = "_NET_WM_WINDOW_TYPE_NORMAL" },
 	[utf8_string]              	= { .name = "UTF8_STRING" },
+	[wm_delete_window]         	= { .name = "WM_DELETE_WINDOW" },
+	[wm_protocols]             	= { .name = "WM_PROTOCOLS" },
 };
 
 static void atom_init_map()
@@ -86,8 +83,41 @@ void xcb_stop(void)
 	connection = NULL;
 }
 
+static void draw_frame(struct window *window)
+{
+	assert(window->render->draw_frame);
+	bool next = false;
+	if (!window->close)
+		next = window->render->draw_frame(window->render_ctx);
+	if (next) {
+		const struct xcb_expose_event_t ex = {
+			.window = window->window,
+			.response_type = XCB_EXPOSE,
+			.x = 0,
+			.y = 0,
+			.width = window->width,
+			.height = window->height,
+		};
+		xcb_send_event(connection, 0, window->window, XCB_EVENT_MASK_EXPOSURE, (const char*)&ex);
+		xcb_flush(connection);
+	}
+}
+
 // TODO
 static struct window *window_object;
+
+/** Ассоциирует указатель на объект окна с идентификатором X11. */
+static void window_set_ptr(struct window *window)
+{
+	window_object = window;
+}
+
+/** Получает указатель на объект из оконного идентификатора X11. */
+static struct window *window_get_ptr(xcb_window_t id)
+{
+	assert(window_object->window == id);
+	return window_object;
+}
 
 bool window_create(struct window *window)
 {
@@ -108,6 +138,9 @@ bool window_create(struct window *window)
 		xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window->window,
 		                    atom[net_wm_window_type].id, XCB_ATOM_ATOM,
 		                    32, 1, &atom[net_wm_window_type_normal].id);
+		xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window->window,
+		                    atom[wm_protocols].id, XCB_ATOM_ATOM,
+		                    32, 1, &atom[wm_delete_window].id);
 		size_t tl = strlen(window->title);
 #if 0
 		// Вывод UTF-8 строк как XCB_ATOM_STRING происходит кракозябрами.
@@ -135,35 +168,41 @@ bool window_create(struct window *window)
 		window->render->create(connection, window->window, window->width,
 		                       window->height, &window->render_ctx);
 		if (window->render_ctx) {
-//			draw_frame(window);
 			xcb_map_window(connection, window->window);
 			xcb_flush(connection);
 		}
-
-		window_object = window;
-
+		window_set_ptr(window);
 	}
 	return window->render_ctx;
 }
 
 bool xcb_dispatch(void)
 {
-	draw_frame(window_object);
-	return true;
-
-	xcb_generic_event_t *ev = xcb_poll_for_event(connection);
-	if (!ev)
-		return false;
-
-	switch (ev->response_type & ~0x80) {
-		case XCB_EXPOSE: {
-			xcb_expose_event_t *ex = (xcb_expose_event_t*)ev;
-
+	bool flush = false;
+	xcb_generic_event_t *ev = xcb_wait_for_event(connection);
+	if (ev) {
+		switch (ev->response_type & ~0x80) {
+		// xcb_create_window_checked(). Рендер ещё не инициализирован.
+		case XCB_CREATE_NOTIFY:
+			break;
+		// xcb_map_window(). Для окна XCB_WINDOW_CLASS_INPUT_OUTPUT
+		// генерируется XCB_EXPOSE, когда окно становится видимым.
+		case XCB_MAP_NOTIFY:
+			break;
+		case XCB_EXPOSE:
+			draw_frame(window_get_ptr(((xcb_expose_event_t*)ev)->window));
+			flush = true;
+			break;
+		case XCB_CLIENT_MESSAGE:
+			if (atom[wm_delete_window].id == ((xcb_client_message_event_t*)ev)->data.data32[0])
+				window_get_ptr(((xcb_client_message_event_t*)ev)->window)->close = true;
 			break;
 		}
+		free(ev);
 	}
-	free(ev);
-	return true;
+	if (flush)
+		xcb_flush(connection);
+	return !xcb_connection_has_error(connection);
 }
 
 void window_destroy(struct window *window)
