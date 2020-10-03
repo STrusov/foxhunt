@@ -13,6 +13,9 @@
  * Клиент Vulkan основан на
  * [Vulkan Tutorial](https://vulkan-tutorial.com) ([авторы](https://github.com/Overv/VulkanTutorial/graphs/contributors)).
  *
+ * Для клиента XCB использован пример
+ * [Vulkan XCB C](https://github.com/RicardasSim/vulkan-xcb-c)
+ *
  * Эмулятор музыкального процессора AY-3-8912 основан на одной из ранних версий
  * [UnrealSpeccy](https://speccy.info/UnrealSpeccy) (автор [SMT](https://speccy.info/SMT)).
  *
@@ -640,7 +643,10 @@ static bool draw_frame(void *p)
 	ay_music_continue(5);
 
 	struct vk_context *vk = p;
-	VkResult r = vk_acquire_frame(vk);
+	// В X11 ожидание обеспечивает синхронизацию с развёрткой.
+	VkResult r = vk_acquire_frame(vk, UINT64_MAX);
+	if (r != VK_SUCCESS)
+		return false;
 
 	// На стадии 0 вычисляем размер буферов, на следующей их заполняем.
 	unsigned total_indices;

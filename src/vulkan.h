@@ -52,7 +52,7 @@ struct transform {
 
 /** Захватывает очередной кадр видеоряда, при необходимости инициализации */
 /** создаёт буфера кадра и команд для его построения.                     */
-VkResult vk_acquire_frame(struct vk_context *vk);
+VkResult vk_acquire_frame(struct vk_context *vk, int64_t timeout);
 
 /** Подготавливает буфер вершин для заполнения.                           */
 VkResult vk_begin_vertex_buffer(struct vk_context *vk, VkDeviceSize size, struct vertex **dest);

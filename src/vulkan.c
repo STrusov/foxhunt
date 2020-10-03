@@ -844,12 +844,12 @@ void vk_end_index_buffer(struct vk_context *vk)
 	vkUnmapMemory(vk->device, vk->frame[vk->active].indx.mem);
 }
 
-VkResult vk_acquire_frame(struct vk_context *vk)
+VkResult vk_acquire_frame(struct vk_context *vk, int64_t timeout)
 {
 	// Таймаут UINT64_MAX (бесконечное ожидание) допустим когда количество уже
 	// захваченных кадров не превышает разность между размером ряда и
 	// minImageCount, возвращённой vkGetPhysicalDeviceSurfaceCapabilities2KHR().
-	VkResult r = vkAcquireNextImageKHR(vk->device, vk->swapchain, 0,
+	VkResult r = vkAcquireNextImageKHR(vk->device, vk->swapchain, timeout,
 	                                   vk->acq_pool[vk->acq_current],
 	                                   VK_NULL_HANDLE, &vk->active);
 	// TODO VK_SUBOPTIMAL_KHR

@@ -101,8 +101,8 @@ struct controller {
 /** Инициализирует сеанс и интерфейсы для связи с сервером. */
 static inline bool wp_init(void);
 
-/** Диспетчерезует сообщения сервера.
- * \return false в случае ошибки, устанавливает errno.
+/** Диспетчерезует сообщения сервера, ожидая их появления.
+ * \return false в случае ошибки, устанавливает errno (только Wayland).
  */
 static inline bool wp_dispatch(void);
 
