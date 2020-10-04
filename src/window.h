@@ -41,6 +41,7 @@ struct window {
 #ifdef FH_PLATFORM_XCB
 	/** Идентификатор окна                  */
 	xcb_window_t        	window;
+
 #else
 	/** Поверхность окна                    */
 	struct wl_surface   	*wl_surface;
@@ -58,6 +59,10 @@ struct window {
 	bool                	pending_resize;
 	/** Окно требует закрытия               */
 	bool                	close;
+#ifdef FH_PLATFORM_XCB
+	/** Видимо ли окно                      */
+	bool                	visible;
+#endif
 };
 
 /** Интерфейс для отрисовки окна */

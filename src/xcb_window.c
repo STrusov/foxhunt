@@ -87,7 +87,7 @@ static void draw_frame(struct window *window)
 {
 	assert(window->render->draw_frame);
 	bool next = false;
-	if (!window->close)
+	if (window->visible && !window->close)
 		next = window->render->draw_frame(window->render_ctx);
 	if (next) {
 		const struct xcb_expose_event_t ex = {
@@ -99,7 +99,6 @@ static void draw_frame(struct window *window)
 			.height = window->height,
 		};
 		xcb_send_event(connection, 0, window->window, XCB_EVENT_MASK_EXPOSURE, (const char*)&ex);
-		xcb_flush(connection);
 	}
 }
 
@@ -126,7 +125,7 @@ bool window_create(struct window *window)
 	window->window = xcb_generate_id(connection);
 	const xcb_cw_t value_mask = XCB_CW_EVENT_MASK;
 	const xcb_event_mask_t value_list[] = {
-		XCB_EVENT_MASK_EXPOSURE,
+		XCB_EVENT_MASK_EXPOSURE|XCB_EVENT_MASK_VISIBILITY_CHANGE,
 	};
 	xcb_void_cookie_t ck;
 	ck = xcb_create_window_checked(connection, XCB_COPY_FROM_PARENT, window->window, screen->root,
@@ -179,9 +178,9 @@ bool window_create(struct window *window)
 bool xcb_dispatch(void)
 {
 	bool flush = false;
-	xcb_generic_event_t *ev = xcb_wait_for_event(connection);
-	if (ev) {
-		switch (ev->response_type & ~0x80) {
+	xcb_generic_event_t *e = xcb_wait_for_event(connection);
+	if (e) {
+		switch (e->response_type & 0x7f) {
 		// xcb_create_window_checked(). Рендер ещё не инициализирован.
 		case XCB_CREATE_NOTIFY:
 			break;
@@ -190,15 +189,22 @@ bool xcb_dispatch(void)
 		case XCB_MAP_NOTIFY:
 			break;
 		case XCB_EXPOSE:
-			draw_frame(window_get_ptr(((xcb_expose_event_t*)ev)->window));
+			draw_frame(window_get_ptr(((xcb_expose_event_t*)e)->window));
 			flush = true;
 			break;
+		// TODO В Gnome не актуально: приходит однократно перед XCB_EXPOSE.
+		case XCB_VISIBILITY_NOTIFY:
+			flush = true;
+			xcb_visibility_notify_event_t *ev = (xcb_visibility_notify_event_t*)e;
+			struct window *window = window_get_ptr(ev->window);
+			window->visible = ev->state != XCB_VISIBILITY_FULLY_OBSCURED;
+			break;
 		case XCB_CLIENT_MESSAGE:
-			if (atom[wm_delete_window].id == ((xcb_client_message_event_t*)ev)->data.data32[0])
-				window_get_ptr(((xcb_client_message_event_t*)ev)->window)->close = true;
+			if (atom[wm_delete_window].id == ((xcb_client_message_event_t*)e)->data.data32[0])
+				window_get_ptr(((xcb_client_message_event_t*)e)->window)->close = true;
 			break;
 		}
-		free(ev);
+		free(e);
 	}
 	if (flush)
 		xcb_flush(connection);
