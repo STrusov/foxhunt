@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <linux/input-event-codes.h>
 #include <xcb/xcb.h>
 #include "window.h"
 
@@ -83,6 +84,11 @@ void xcb_stop(void)
 	connection = NULL;
 }
 
+static bool set_cursor(struct window * window, const char *cursor_name)
+{
+	return true;
+}
+
 static void draw_frame(struct window *window)
 {
 	assert(window->render->draw_frame);
@@ -118,14 +124,71 @@ static struct window *window_get_ptr(xcb_window_t id)
 	return window_object;
 }
 
+/** Получает Input event code из xcb_button_t */
+static inline unsigned ec_from_xcb(xcb_button_t b)
+{
+	switch(b) {
+	case 1:	return BTN_LEFT;
+	case 2:	return BTN_RIGHT;
+	case 3:	return BTN_MIDDLE;
+	case 4:	return BTN_SIDE;
+	case 5:	return BTN_EXTRA;
+	case 6:	return BTN_FORWARD;
+	case 7:	return BTN_BACK;
+	case 8:	return BTN_TASK;
+	default:
+		assert(0);
+		return KEY_RESERVED;
+	}
+}
+
+static void on_pointer_move(xcb_motion_notify_event_t *e)
+{
+	struct window *window = window_get_ptr(e->event);
+	const char *cursor_name = "hand1";
+	if (window->ctrl && window->ctrl->hover)
+		window->ctrl->hover(window, e->event_x, e->event_y, &cursor_name);
+#ifdef NDEBUG
+	set_cursor(window, cursor_name);
+#else
+	const bool cursor_selected = set_cursor(window, cursor_name);
+#endif
+	assert(cursor_selected);
+}
+
+static void on_pointer_button(xcb_button_press_event_t *e, bool pressed)
+{
+	struct window *window = window_get_ptr(e->event);
+	bool handled = false;
+	if (window->ctrl && window->ctrl->click) {
+		const char unchanged[0] = {};
+		const char *cursor_name = unchanged;
+		handled = window->ctrl->click(window, e->event_x, e->event_y, &cursor_name,
+		                              ec_from_xcb(e->detail), pressed);
+		if (cursor_name != unchanged) {
+#ifndef NDEBUG
+			const bool cursor_selected = set_cursor(window, cursor_name);
+#endif
+			assert(cursor_selected);
+		}
+	}
+}
+
 bool window_create(struct window *window)
 {
 	window_geometry(window);
 
 	window->window = xcb_generate_id(connection);
 	const xcb_cw_t value_mask = XCB_CW_EVENT_MASK;
+	xcb_event_mask_t event_mask = XCB_EVENT_MASK_EXPOSURE|XCB_EVENT_MASK_VISIBILITY_CHANGE;
+	if (window->ctrl) {
+		if (window->ctrl->click)
+			event_mask |= XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE;
+		if (window->ctrl->hover)
+			event_mask |= XCB_EVENT_MASK_POINTER_MOTION | XCB_EVENT_MASK_BUTTON_MOTION;
+	}
 	const xcb_event_mask_t value_list[] = {
-		XCB_EVENT_MASK_EXPOSURE|XCB_EVENT_MASK_VISIBILITY_CHANGE,
+		event_mask,
 	};
 	xcb_void_cookie_t ck;
 	ck = xcb_create_window_checked(connection, XCB_COPY_FROM_PARENT, window->window, screen->root,
@@ -202,6 +265,18 @@ bool xcb_dispatch(void)
 		case XCB_CLIENT_MESSAGE:
 			if (atom[wm_delete_window].id == ((xcb_client_message_event_t*)e)->data.data32[0])
 				window_get_ptr(((xcb_client_message_event_t*)e)->window)->close = true;
+			break;
+		case XCB_BUTTON_PRESS:
+			on_pointer_button((xcb_button_press_event_t*)e, true);
+			flush = true;
+			break;
+		case XCB_BUTTON_RELEASE:
+			on_pointer_button((xcb_button_release_event_t*)e, false);
+			flush = true;
+			break;
+		case XCB_MOTION_NOTIFY:
+			on_pointer_move((xcb_motion_notify_event_t *)e);
+			flush = true;
 			break;
 		}
 		free(e);
