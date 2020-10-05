@@ -16,6 +16,10 @@ static struct xcb_connection_t	*connection;
  */
 static struct xcb_screen_t    	*screen;
 
+/** Определяют формат изображения и цветовую глубину. */
+static struct xcb_visualtype_t	*visual;
+static xcb_colormap_t         	colormap;
+static uint8_t                	visual_depth;
 
 static xcb_atom_t get_atom_by_name(const char *name)
 {
@@ -58,6 +62,7 @@ static void atom_init_map()
 		atom[i].id = get_atom_by_name(atom[i].name);
 }
 
+
 bool xcb_init(void)
 {
 	int preferred = 0;
@@ -71,11 +76,30 @@ bool xcb_init(void)
 			xcb_screen_next(&si);
 			--preferred;
 		}
-		if (!preferred)
+		if (!preferred) {
 			screen = si.data;
+			// Ищем подходящий режим для отображения ARGB (32 разряда)
+			// либо используем базовый.
+			xcb_depth_iterator_t di;
+			xcb_visualtype_iterator_t vi;
+			for (di = xcb_screen_allowed_depths_iterator(screen); di.rem; xcb_depth_next(&di))
+				for (vi = xcb_depth_visuals_iterator(di.data); vi.rem; xcb_visualtype_next(&vi)) {
+					if (di.data->depth == 32 && vi.data->_class == XCB_VISUAL_CLASS_TRUE_COLOR) {
+						visual = vi.data;
+						visual_depth  = di.data->depth;
+						break;
+					}
+					if (!visual && screen->root_visual == vi.data->visual_id) {
+						visual = vi.data;
+						visual_depth  = di.data->depth;
+					}
+				}
+			colormap = xcb_generate_id(connection);
+			xcb_create_colormap(connection, XCB_COLORMAP_ALLOC_NONE, colormap, screen->root, visual->visual_id);
+		}
 		atom_init_map();
 	}
-	return connection && screen;
+	return connection && screen && visual;
 }
 
 void xcb_stop(void)
@@ -179,7 +203,11 @@ bool window_create(struct window *window)
 	window_geometry(window);
 
 	window->window = xcb_generate_id(connection);
-	const xcb_cw_t value_mask = XCB_CW_EVENT_MASK;
+	// XCB_CW_BORDER_PIXEL необходим для colormap при 32-х разрядном цвете.
+	const xcb_cw_t value_mask = XCB_CW_BACK_PIXMAP
+	                          | XCB_CW_BORDER_PIXEL
+	                          | XCB_CW_EVENT_MASK
+	                          | XCB_CW_COLORMAP;
 	xcb_event_mask_t event_mask = XCB_EVENT_MASK_EXPOSURE|XCB_EVENT_MASK_VISIBILITY_CHANGE;
 	if (window->ctrl) {
 		if (window->ctrl->click)
@@ -187,13 +215,16 @@ bool window_create(struct window *window)
 		if (window->ctrl->hover)
 			event_mask |= XCB_EVENT_MASK_POINTER_MOTION | XCB_EVENT_MASK_BUTTON_MOTION;
 	}
-	const xcb_event_mask_t value_list[] = {
+	const uint32_t value_list[] = {
+		XCB_BACK_PIXMAP_NONE,
+		0,
 		event_mask,
+		colormap,
 	};
 	xcb_void_cookie_t ck;
-	ck = xcb_create_window_checked(connection, XCB_COPY_FROM_PARENT, window->window, screen->root,
-	                               0, 0, window->width, window->height, window->border,
-	                               XCB_WINDOW_CLASS_INPUT_OUTPUT, screen->root_visual,
+	ck = xcb_create_window_checked(connection, visual_depth, window->window, screen->root,
+	                               0, 0, window->width, window->height, 0,
+	                               XCB_WINDOW_CLASS_INPUT_OUTPUT, visual->visual_id,
 	                               value_mask, value_list);
 	xcb_generic_error_t *r = xcb_request_check(connection, ck);
 	if (!r) {
@@ -290,6 +321,7 @@ void window_destroy(struct window *window)
 {
 	if (window->render->destroy && window->render_ctx)
 		window->render->destroy(window->render_ctx);
-
+	if (colormap)
+		xcb_free_colormap(connection, colormap);
 	xcb_destroy_window(connection, window->window);
 }
