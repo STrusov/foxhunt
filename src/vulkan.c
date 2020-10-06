@@ -23,6 +23,14 @@ static const char *instance_extensions[] = {
 #endif
 };
 
+#if !defined(FH_VK_SWAPCHAIN_LAZY_FREE)
+#ifdef VK_USE_PLATFORM_XCB_KHR
+#define FH_VK_SWAPCHAIN_LAZY_FREE 0
+#else
+#define FH_VK_SWAPCHAIN_LAZY_FREE 1
+#endif
+#endif
+
 static const char *device_extensions[] = {
 	VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
@@ -432,6 +440,7 @@ static VkResult create_swapchain(struct vk_context *vk, uint32_t width, uint32_t
 	// для отложенного удаления после освобождения буфера команд
 	// \see vk_begin_render_cmd(), остальные освобождаем сразу.
 	if (vk->old_swapchain) {
+#if FH_VK_SWAPCHAIN_LAZY_FREE
 		// Проверим занятость буфера команд по VK_TIMEOUT
 		// TODO без этой команды валидатор рапортует о занятости ДРУГОГО буфера.
 		// TODO изредка при 0-м ожидании валидатор выдаёт при отложенном освобождении:
@@ -441,6 +450,11 @@ static VkResult create_swapchain(struct vk_context *vk, uint32_t width, uint32_t
 		// при этом vkDeviceWaitIdle(vk->device) перед освобождением
 		// в vk_begin_render_cmd() поведение не меняет.
 		VkResult busy = vkWaitForFences(vk->device, 1, &vk->frame[vk->active].pending, VK_TRUE, 0);
+#else
+		VkResult busy = 0;
+		// Ждём завершения активной стадии.
+		vkWaitForFences(vk->device, 1, &vk->frame[vk->active].pending, VK_TRUE, UINT64_MAX);
+#endif
 		if (busy) {
 			vk->frame[vk->count].cmd     = vk->frame[vk->active].cmd;
 			vk->frame[vk->count].fb      = vk->frame[vk->active].fb;
