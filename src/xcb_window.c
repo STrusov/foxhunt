@@ -148,6 +148,21 @@ static struct window *window_get_ptr(xcb_window_t id)
 	return window_object;
 }
 
+
+static void on_resize(xcb_resize_request_event_t *e)
+{
+	struct window *window = window_get_ptr(e->window);
+	// ICCC: Clients must not respond to being resized by attempting to resize
+	// themselves to a better size.
+	const uint32_t size[] = { e->width, e->height };
+	xcb_configure_window(connection, e->window, XCB_CONFIG_WINDOW_WIDTH|XCB_CONFIG_WINDOW_HEIGHT, size);
+	if (window->width != e->width || window->height != e->height) {
+		window->width  = e->width;
+		window->height = e->height;
+		window->render->resize(window->render_ctx, window->width, window->height);
+	}
+}
+
 /** Получает Input event code из xcb_button_t */
 static inline unsigned ec_from_xcb(xcb_button_t b)
 {
@@ -214,6 +229,9 @@ bool window_create(struct window *window)
 			event_mask |= XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE;
 		if (window->ctrl->hover)
 			event_mask |= XCB_EVENT_MASK_POINTER_MOTION | XCB_EVENT_MASK_BUTTON_MOTION;
+		///\see xcb_dispatch()
+		if (window->render->resize)
+			event_mask |= XCB_EVENT_MASK_RESIZE_REDIRECT;
 	}
 	const uint32_t value_list[] = {
 		XCB_BACK_PIXMAP_NONE,
@@ -272,8 +290,21 @@ bool window_create(struct window *window)
 bool xcb_dispatch(void)
 {
 	bool flush = false;
+	// Диспетчеру приходится совместить обработку асинхронных сообщений сервера
+	// с необходимостью синхронизации вывода с развёрткой дисплея.
+	// Поскольку Vulkan при смене отображаемых кадров выполняет синхронизацию,
+	// достаточно использовать ожидание в vk_acquire_frame() без усложнения
+	// работой с расширениям XSync. Однако, во время паузы при синхронизации
+	// могут поступать сообщения от устройств ввода, а так же иные.
+	// В цикле фиксируем факт прихода сообщений XCB_EXPOSE и XCB_RESIZE_REQUEST,
+	// выбираем накопившиеся сообщения и обрабатываем их. После чего, если надо,
+	// обрабатываем вывод/изменение размера.
+	// XCB_CONFIGURE_REQUEST так же требует дополнительной синхронизации,
+	// потому используем XCB_RESIZE_REQUEST.
+	xcb_expose_event_t         *expose = NULL;
+	xcb_resize_request_event_t *resize = NULL;
 	xcb_generic_event_t *e = xcb_wait_for_event(connection);
-	if (e) {
+	while (e) {
 		switch (e->response_type & 0x7f) {
 		// xcb_create_window_checked(). Рендер ещё не инициализирован.
 		case XCB_CREATE_NOTIFY:
@@ -281,10 +312,6 @@ bool xcb_dispatch(void)
 		// xcb_map_window(). Для окна XCB_WINDOW_CLASS_INPUT_OUTPUT
 		// генерируется XCB_EXPOSE, когда окно становится видимым.
 		case XCB_MAP_NOTIFY:
-			break;
-		case XCB_EXPOSE:
-			draw_frame(window_get_ptr(((xcb_expose_event_t*)e)->window));
-			flush = true;
 			break;
 		// TODO В Gnome не актуально: приходит однократно перед XCB_EXPOSE.
 		case XCB_VISIBILITY_NOTIFY:
@@ -309,8 +336,51 @@ bool xcb_dispatch(void)
 			on_pointer_move((xcb_motion_notify_event_t *)e);
 			flush = true;
 			break;
+		case XCB_EXPOSE:
+			// Может прийти при XCB_RESIZE_REQUEST
+			if (expose) {
+				assert(expose->window == ((xcb_expose_event_t*)e)->window);
+				free(expose);
+			}
+			expose = (xcb_expose_event_t*)e;
+			e = NULL;
+			break;
+		// Последовательность согласно Inter-Client Communication Conventions:
+		// 1 -> XCB_CW_OVERRIDE_REDIRECT;
+		// изменение размера;
+		// 0 -> XCB_CW_OVERRIDE_REDIRECT.
+		case XCB_RESIZE_REQUEST:
+			// Повторы не наблюдаются, но и утечки недопустимы.
+			if (resize) {
+				assert(resize->window == ((xcb_resize_request_event_t*)e)->window);
+				free(resize);
+			}
+			resize = (xcb_resize_request_event_t*)e;
+			xcb_change_window_attributes(connection, resize->window,
+			                             XCB_CW_OVERRIDE_REDIRECT, &(uint32_t[]){1});
+			e = NULL;
+			break;
+		// TODO XCB spams XCB_GE_GENERIC event after Vulkan window resize
+		// https://gitlab.freedesktop.org/mesa/mesa/-/issues/827
+		default:
+			break;
 		}
-		free(e);
+		if (e)
+			free(e);
+		e = xcb_poll_for_event(connection);
+	}
+	if (expose) {
+		draw_frame(window_get_ptr(expose->window));
+		free(expose);
+		flush = true;
+	}
+	// При вызове до draw_frame() случаются неудачи в vk_present_frame().
+	if (resize) {
+		on_resize(resize);
+		xcb_change_window_attributes(connection, resize->window,
+		                             XCB_CW_OVERRIDE_REDIRECT, &(uint32_t[]){0});
+		free(resize);
+		flush = true;
 	}
 	if (flush)
 		xcb_flush(connection);
