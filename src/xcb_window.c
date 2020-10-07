@@ -44,6 +44,7 @@ enum atom {
 	net_wm_icon_name,
 	net_wm_window_type,
 	net_wm_window_type_normal,
+	motif_wm_hints,
 	utf8_string,
 	wm_delete_window,
 	wm_protocols,
@@ -56,6 +57,7 @@ static struct { const char *const name; xcb_atom_t id; } atom[atom_max] = {
 	[net_wm_icon_name]         	= { .name = "_NET_WM_ICON_NAME" },
 	[net_wm_window_type]       	= { .name = "_NET_WM_WINDOW_TYPE" },
 	[net_wm_window_type_normal]	= { .name = "_NET_WM_WINDOW_TYPE_NORMAL" },
+	[motif_wm_hints]           	= { .name = "_MOTIF_WM_HINTS" },
 	[utf8_string]              	= { .name = "UTF8_STRING" },
 	[wm_delete_window]         	= { .name = "WM_DELETE_WINDOW" },
 	[wm_protocols]             	= { .name = "WM_PROTOCOLS" },
@@ -264,6 +266,7 @@ bool window_create(struct window *window)
 	// XCB_CW_BORDER_PIXEL необходим для colormap при 32-х разрядном цвете.
 	const xcb_cw_t value_mask = XCB_CW_BACK_PIXMAP
 	                          | XCB_CW_BORDER_PIXEL
+//	                          | XCB_CW_OVERRIDE_REDIRECT
 	                          | XCB_CW_EVENT_MASK
 	                          | XCB_CW_COLORMAP;
 	xcb_event_mask_t event_mask = XCB_EVENT_MASK_EXPOSURE|XCB_EVENT_MASK_VISIBILITY_CHANGE;
@@ -279,6 +282,7 @@ bool window_create(struct window *window)
 	const uint32_t value_list[] = {
 		XCB_BACK_PIXMAP_NONE,
 		0,
+//		1,
 		event_mask,
 		colormap,
 	};
@@ -300,6 +304,12 @@ bool window_create(struct window *window)
 			hints.min_aspect_den = hints.max_aspect_den = window->height;
 		}
 		xcb_icccm_set_wm_size_hints(connection, window->window, XCB_ATOM_WM_NORMAL_HINTS, &hints);
+		if (1) {
+			// Скрываем заголовок, оставляю бордюр для изменения размера.
+			xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window->window,
+			                    atom[motif_wm_hints].id, XCB_ATOM_ATOM,
+			                    32, 5, (uint32_t[5]){2, 0, 2});
+		}
 		xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window->window,
 		                    atom[net_wm_window_type].id, XCB_ATOM_ATOM,
 		                    32, 1, &atom[net_wm_window_type_normal].id);
