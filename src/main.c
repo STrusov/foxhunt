@@ -46,7 +46,7 @@
 #include "text.h"
 #include "window.h"
 
-#define APP_VERSION "0.12-альфа"
+#define APP_VERSION "0.20-альфа"
 
 #ifndef BOARD_MAX_SIZE
 #define BOARD_MAX_SIZE 9
@@ -783,7 +783,11 @@ static const struct controller controller = {
 int main(int argc, char *argv[])
 {
 	int r = 0;
-	printf("«%s» версия " APP_VERSION ".\n", game_name);
+#ifdef FH_PLATFORM_XCB
+	printf("«%s» версия " APP_VERSION " для X11 (XCB).\n", game_name);
+#else
+	printf("«%s» версия " APP_VERSION " для Wayland.\n", game_name);
+#endif
 
 	bool music = ay_music_init() >= 0;
 	if (music)
