@@ -4,6 +4,7 @@
 #include <string.h>
 #include <linux/input-event-codes.h>
 #include <xcb/xcb.h>
+#include <xcb/xcb_icccm.h>
 #include "window.h"
 
 /**
@@ -246,6 +247,17 @@ bool window_create(struct window *window)
 	                               value_mask, value_list);
 	xcb_generic_error_t *r = xcb_request_check(connection, ck);
 	if (!r) {
+		xcb_size_hints_t hints = {
+			.flags     	= XCB_ICCCM_SIZE_HINT_P_MIN_SIZE,
+			.min_width 	= 2 * window->border,
+			.min_height	= 2 * window->border,
+		};
+		if (window->aspect_ratio) {
+			hints.flags |= XCB_ICCCM_SIZE_HINT_P_ASPECT;
+			hints.min_aspect_num = hints.max_aspect_num = window->width;
+			hints.min_aspect_den = hints.max_aspect_den = window->height;
+		}
+		xcb_icccm_set_wm_size_hints(connection, window->window, XCB_ATOM_WM_NORMAL_HINTS, &hints);
 		xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window->window,
 		                    atom[net_wm_window_type].id, XCB_ATOM_ATOM,
 		                    32, 1, &atom[net_wm_window_type_normal].id);
