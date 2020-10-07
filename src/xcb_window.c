@@ -213,7 +213,15 @@ static void on_pointer_move(xcb_motion_notify_event_t *e)
 {
 	struct window *window = window_get_ptr(e->event);
 	const char *cursor_name = "hand1";
-	if (window->ctrl && window->ctrl->hover)
+	if (window->moving_by_client_area) {
+		const uint32_t xy[] = {
+			e->root_x - window->button_x,
+			e->root_y - window->button_y,
+		};
+		xcb_configure_window(connection, e->event, XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, xy);
+		cursor_name = "grabbing";
+	}
+	else if (window->ctrl && window->ctrl->hover)
 		window->ctrl->hover(window, e->event_x, e->event_y, &cursor_name);
 #ifdef NDEBUG
 	set_cursor(window, cursor_name);
@@ -226,18 +234,25 @@ static void on_pointer_move(xcb_motion_notify_event_t *e)
 static void on_pointer_button(xcb_button_press_event_t *e, bool pressed)
 {
 	struct window *window = window_get_ptr(e->event);
+	const char unchanged[0] = {};
+	const char *cursor_name = unchanged;
 	bool handled = false;
 	if (window->ctrl && window->ctrl->click) {
-		const char unchanged[0] = {};
-		const char *cursor_name = unchanged;
 		handled = window->ctrl->click(window, e->event_x, e->event_y, &cursor_name,
 		                              ec_from_xcb(e->detail), pressed);
-		if (cursor_name != unchanged) {
+	}
+	if (!handled) {
+		// TODO в Mutter смещение по y на величину заголовка (?)
+		window->button_x = e->event_x;
+		window->button_y = e->event_y;
+		window->moving_by_client_area = pressed;
+		cursor_name = pressed ? "grabbing" : "hand1";
+	}
+	if (cursor_name != unchanged) {
 #ifndef NDEBUG
-			const bool cursor_selected = set_cursor(window, cursor_name);
+		const bool cursor_selected = set_cursor(window, cursor_name);
 #endif
-			assert(cursor_selected);
-		}
+		assert(cursor_selected);
 	}
 }
 

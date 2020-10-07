@@ -41,7 +41,9 @@ struct window {
 #ifdef FH_PLATFORM_XCB
 	/** Идентификатор окна                  */
 	xcb_window_t        	window;
-
+	/** Координаты клика по клиентской области (для перемещения) */
+	int16_t             	button_x;
+	int16_t             	button_y;
 #else
 	/** Поверхность окна                    */
 	struct wl_surface   	*wl_surface;
@@ -55,13 +57,16 @@ struct window {
 	/** Имя текущего курсора                */
 	const char          	*cursor_name;
 
-	bool                	pending_configure;
-	bool                	pending_resize;
 	/** Окно требует закрытия               */
 	bool                	close;
 #ifdef FH_PLATFORM_XCB
 	/** Видимо ли окно                      */
 	bool                	visible;
+	/** Перемещение инициировано кликом на клиентскую область */
+	bool                	moving_by_client_area;
+#else
+	bool                	pending_configure;
+	bool                	pending_resize;
 #endif
 };
 
