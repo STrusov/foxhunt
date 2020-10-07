@@ -4,7 +4,9 @@
 #include <string.h>
 #include <linux/input-event-codes.h>
 #include <xcb/xcb.h>
+#include <xcb/xcb_cursor.h>
 #include <xcb/xcb_icccm.h>
+//#include <xcb/xfixes.h>
 #include "window.h"
 
 /**
@@ -21,6 +23,8 @@ static struct xcb_screen_t    	*screen;
 static struct xcb_visualtype_t	*visual;
 static xcb_colormap_t         	colormap;
 static uint8_t                	visual_depth;
+
+static xcb_cursor_context_t   	*cursor_context;
 
 static xcb_atom_t get_atom_by_name(const char *name)
 {
@@ -109,8 +113,31 @@ void xcb_stop(void)
 	connection = NULL;
 }
 
-static bool set_cursor(struct window * window, const char *cursor_name)
+///\param name указатель на _статически_ аллоцированную строку (сохраняется без strdup)
+///      либо NULL — для скрытия курсора (не реализовано).
+static bool set_cursor(struct window * window, const char *name)
 {
+	static const char empty[0] = {};
+	if (!name)
+		name = empty;
+	if (name != window->cursor_name) {
+		if (name != empty) {
+			if (!cursor_context)
+				xcb_cursor_context_new(connection, screen, &cursor_context);
+			if (!cursor_context)
+				return false;
+			// Wayland загружает курсоры разом и хранит, по запросу выбирая из
+			// набора. В данном случае в угоду простоте обходимся без кеширования.
+			xcb_cursor_t cursor = xcb_cursor_load_cursor(cursor_context, name);
+			xcb_change_window_attributes(connection, window->window, XCB_CW_CURSOR,
+			                             &(uint32_t[]){cursor});
+			xcb_free_cursor(connection, cursor);
+		} else {
+			// TODO
+			//xcb_xfixes_hide_cursor(connection, window->window);
+		}
+		window->cursor_name = name;
+	}
 	return true;
 }
 
@@ -403,6 +430,8 @@ void window_destroy(struct window *window)
 {
 	if (window->render->destroy && window->render_ctx)
 		window->render->destroy(window->render_ctx);
+	if (cursor_context)
+		xcb_cursor_context_free(cursor_context);
 	if (colormap)
 		xcb_free_colormap(connection, colormap);
 	xcb_destroy_window(connection, window->window);

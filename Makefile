@@ -13,7 +13,7 @@ CFLAGS  := -std=c18 -Wall
 LDFLAGS := -lm -pthread
 ifdef X11
     SOURCES := $(subst $(wildcard src/wayland*.c),,$(SOURCES))
-    LIBS += xcb xcb-icccm
+    LIBS += xcb xcb-cursor xcb-icccm
     CFLAGS += -DFH_PLATFORM_XCB
 else
     SOURCES := $(subst $(wildcard src/xcb*.c),,$(SOURCES))
