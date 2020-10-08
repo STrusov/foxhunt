@@ -316,6 +316,7 @@ bool window_create(struct window *window)
 		xcb_icccm_set_wm_size_hints(connection, window->window, XCB_ATOM_WM_NORMAL_HINTS, &hints);
 		if (1) {
 			// Скрываем заголовок, оставляю бордюр для изменения размера.
+			// TODO в XFCE не поддерживается.
 			xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window->window,
 			                    atom[motif_wm_hints].id, XCB_ATOM_ATOM,
 			                    32, 5, (uint32_t[5]){2, 0, 2});
@@ -388,6 +389,7 @@ bool xcb_dispatch(void)
 		case XCB_MAP_NOTIFY:
 			break;
 		// TODO В Gnome не актуально: приходит однократно перед XCB_EXPOSE.
+		// В Mate и XFCE приходит только XCB_VISIBILITY_UNOBSCURED.
 		case XCB_VISIBILITY_NOTIFY:
 			flush = true;
 			xcb_visibility_notify_event_t *ev = (xcb_visibility_notify_event_t*)e;
