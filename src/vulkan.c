@@ -779,6 +779,11 @@ VkResult create_buffer(struct vk_context *vk, VkDeviceSize size,
 		vkGetPhysicalDeviceMemoryProperties(vk->gpu, &props);
 		for ( uint32_t i = 0; i < props.memoryTypeCount; ++i)
 			// Для memoryTypeBits гарантируется минимум 1 установленный бит.
+			// Для memoryTypes гарантируется, что для младших элементов массива:
+			// - propertyFlags являются строгими подмножествами старших;
+			// - propertyFlags совпадает с одним из старших, но производительность выше;
+			// Таким образом, при сравнении с замаскированным значением,
+			// первый элемент окажется требуемым, либо наилучшим.
 			if (req.memoryTypeBits & (1 << i) && flags == (props.memoryTypes[i].propertyFlags & flags)) {
 				const struct VkMemoryAllocateInfo alloc_info = {
 					.sType          	= VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
@@ -791,10 +796,16 @@ VkResult create_buffer(struct vk_context *vk, VkDeviceSize size,
 					printf(" память распределена");
 #endif
 					r = vkBindBufferMemory(vk->device, *buffer, *mem, 0);
+					if (r == VK_SUCCESS) {
 #ifdef FH_VK_DETAILED_LOG
-					if (r == VK_SUCCESS)
 						printf(" и привязана.");
 #endif
+						break;
+					} else {
+						// Не ясно, имеют ли смысл дальнейшие попытки,
+						// но они лучше, чем ничего.
+						vkFreeMemory(vk->device, *mem, allocator);
+					}
 				}
 			}
 #ifdef FH_VK_DETAILED_LOG
