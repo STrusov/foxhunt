@@ -657,10 +657,13 @@ static bool draw_frame(void *p)
 		vert_index   	*indx_buf = NULL;
 		if (dc.stage) {
 			// Округляем немного вверх, что бы избежать новых распределений памяти.
-			unsigned vtcs = (total_vertices | ((1 << 5) - 1)) - 1;
-			unsigned idcs = (total_indices  | ((1 << 6) - 1)) - 1;
-			r = vk_begin_vertex_buffer(vk, vtcs * sizeof(struct vertex), &vert_buf);
-			r = vk_begin_index_buffer(vk, idcs * sizeof(vert_index), &indx_buf);
+			// Опыт показал, что буфера размещаются по кратным размеру страниц
+			// адресам, соответственно фактический размер их кратен странице.
+			// Принимаем гранулярность как 0x1000 (4096 байт на IA32/AMD64).
+			unsigned vb_size = (total_vertices * sizeof(struct vertex) - 1 | 0xFFF) + 1;
+			unsigned ib_size = (total_indices * sizeof(vert_index) - 1 | 0xFFF) + 1;
+			r = vk_begin_vertex_buffer(vk, vb_size, &vert_buf);
+			r = vk_begin_index_buffer(vk, ib_size, &indx_buf);
 		}
 		dc.vert_buf = vert_buf;
 		dc.indx_buf = indx_buf;
