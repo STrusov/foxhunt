@@ -46,7 +46,7 @@
 #include "text.h"
 #include "window.h"
 
-#define APP_VERSION "0.20-альфа"
+#define APP_VERSION "0.21-альфа"
 
 #ifndef BOARD_MAX_SIZE
 #define BOARD_MAX_SIZE 9
